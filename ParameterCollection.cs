@@ -12,6 +12,7 @@ namespace Claymore.SharpMediaWiki
         public ParameterCollection()
         {
             _parameters = new Dictionary<string, string>();
+            _parameters.Add("format", "xml");
         }
 
         public ParameterCollection(ParameterCollection copy)
@@ -21,6 +22,10 @@ namespace Claymore.SharpMediaWiki
 
         public void Add(string key, string value)
         {
+            if (key == "action")
+            {
+                throw new ArgumentException("You can't add 'action' as a parameter.");
+            }
             _parameters.Add(key, value);
         }
 

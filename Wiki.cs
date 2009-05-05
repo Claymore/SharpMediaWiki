@@ -194,6 +194,11 @@ namespace Claymore.SharpMediaWiki
             }
         }
 
+        public XmlDocument QueryTitles(ParameterCollection parameters, IEnumerable<string> titles)
+        {
+            return QueryTitles(parameters, titles, 20);
+        }
+
         public XmlDocument QueryTitles(ParameterCollection parameters, IEnumerable<string> titles, int limit)
         {
             XmlDocument document = new XmlDocument();
@@ -229,7 +234,7 @@ namespace Claymore.SharpMediaWiki
             return document;
         }
 
-        private string PrepareQuery(Action action, IEnumerable<KeyValuePair<string, string>> parameters)
+        private string PrepareQuery(Action action, ParameterCollection parameters)
         {
             string query = "";
             switch (action)
@@ -256,12 +261,11 @@ namespace Claymore.SharpMediaWiki
                         ? "1"
                         : EscapeString(pair.Value)));
             }
-            attributes.Append("&format=xml");
             query += attributes.ToString();
             return query;
         }
 
-        private XmlDocument MakeRequest(Action action, IEnumerable<KeyValuePair<string, string>> parameters)
+        public XmlDocument MakeRequest(Action action, ParameterCollection parameters)
         {
             string query = PrepareQuery(action, parameters);
             HttpWebRequest request = PrepareRequest();
