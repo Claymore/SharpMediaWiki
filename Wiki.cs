@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using System.Xml;
 using System.Security.Cryptography;
+using System.Threading;
 
 namespace Claymore.SharpMediaWiki
 {
@@ -175,6 +176,7 @@ namespace Claymore.SharpMediaWiki
             parameters.Add("starttimestamp", starttimestamp);
             parameters.Add("summary", summary);
             parameters.Add("md5", ComputeHashString(text));
+            parameters.Add("maxlag", "5");
             
             MakeRequest(Action.Edit, parameters);
         }
@@ -186,6 +188,7 @@ namespace Claymore.SharpMediaWiki
             parameters.Add("prop", "info");
             parameters.Add("intoken", "move");
             parameters.Add("titles", fromTitle);
+            parameters.Add("maxlag", "5");
 
             XmlDocument doc = MakeRequest(Action.Query, parameters);
             XmlNode node = doc.SelectSingleNode("/api/query/pages/page");
@@ -302,17 +305,31 @@ namespace Claymore.SharpMediaWiki
 
         public XmlDocument MakeRequest(Action action, ParameterCollection parameters)
         {
-            string query = PrepareQuery(action, parameters);
-            HttpWebRequest request = PrepareRequest();
-            using (StreamWriter sw = new StreamWriter(request.GetRequestStream()))
-            {
-                sw.Write(query);
-            }
             XmlDocument doc = new XmlDocument();
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            using (StreamReader sr = new StreamReader(response.GetResponseStream()))
+            HttpWebResponse response = null;
+            string query = PrepareQuery(action, parameters);
+            for (int tries = 0; tries < 3; ++tries)
             {
-                doc.LoadXml(sr.ReadToEnd());
+                HttpWebRequest request = PrepareRequest();
+                using (StreamWriter sw = new StreamWriter(request.GetRequestStream()))
+                {
+                    sw.Write(query);
+                }
+                response = (HttpWebResponse)request.GetResponse();
+                string[] retryAfter = response.Headers.GetValues("Retry-After");
+                if (retryAfter != null)
+                {
+                    int lagInSeconds = int.Parse(retryAfter[0]);
+                    Thread.Sleep(lagInSeconds * 1000);
+                }
+                else
+                {
+                    using (StreamReader sr = new StreamReader(response.GetResponseStream()))
+                    {
+                        doc.LoadXml(sr.ReadToEnd());
+                    }
+                    break;
+                }
             }
 
             XmlNode node = doc.SelectSingleNode("error");
@@ -342,13 +359,13 @@ namespace Claymore.SharpMediaWiki
 
         private void FillDocumentWithQueryResults(string query, XmlDocument document)
         {
+            string xml = "";
             HttpWebRequest request = PrepareRequest();
             using (StreamWriter sw = new StreamWriter(request.GetRequestStream()))
             {
                 sw.Write(query);
             }
             WebResponse response = request.GetResponse();
-            string xml;
             using (StreamReader sr = new StreamReader(response.GetResponseStream()))
             {
                 xml = sr.ReadToEnd();
