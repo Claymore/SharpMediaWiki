@@ -52,4 +52,21 @@ namespace Claymore.SharpMediaWiki
         {
         }
     }
+
+    public class MoveException : WikiException
+    {
+        public MoveException()
+        {
+        }
+
+        public MoveException(string message)
+            : base(message)
+        {
+        }
+
+        public MoveException(string message, Exception inner)
+            : base(message, inner)
+        {
+        }
+    }
 }

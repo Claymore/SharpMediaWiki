@@ -48,24 +48,15 @@ namespace Claymore.SharpMediaWiki
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("lgname", user);
             parameters.Add("lgpassword", password);
-            
-            XmlDocument doc = MakeRequest(Action.Login, parameters);
-            XmlNode resultNode = doc.SelectSingleNode("/api/login");
-            if (resultNode.Attributes["result"] != null)
-            {
-                string result = resultNode.Attributes["result"].Value;
-                if (result != "Success")
-                {
-                    throw new LoginException(result);
-                }
-            }
+
+            MakeRequest(Action.Login, parameters);
 
             parameters.Clear();
             parameters.Add("list", "users");
             parameters.Add("usprop", "groups");
             parameters.Add("ususers", user);
 
-            doc = MakeRequest(Action.Query, parameters);
+            XmlDocument doc = MakeRequest(Action.Query, parameters);
             XmlNodeList nodes = doc.SelectNodes("/api/query/users/user/groups/g");
             foreach (XmlNode node in nodes)
             {
@@ -129,7 +120,18 @@ namespace Claymore.SharpMediaWiki
                 MinorFlags.Minor, CreateFlags.NoCreate, WatchFlags.None);
         }
 
-        public void SavePage(string title, string section, string text, string comment,
+        /// <summary>
+        /// Saves or creates a page or a page section.
+        /// </summary>
+        /// <param name="title">A page title.</param>
+        /// <param name="section">A section. Use "0" for the top section and "new" for a new one.</param>
+        /// <param name="text">Text of the page or section.</param>
+        /// <param name="summary">Edit summary. If section is "new" it will be used as section title.</param>
+        /// <param name="minor">Minor flag.</param>
+        /// <param name="create">Create flag.</param>
+        /// <param name="watch">Watch flag.</param>
+        /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages"/></remarks>
+        public void SavePage(string title, string section, string text, string summary,
             MinorFlags minor, CreateFlags create, WatchFlags watch)
         {
             ParameterCollection parameters = new ParameterCollection();
@@ -171,31 +173,44 @@ namespace Claymore.SharpMediaWiki
             }
             parameters.Add("basetimestamp", baseTimeStamp);
             parameters.Add("starttimestamp", starttimestamp);
-            parameters.Add("summary", comment);
+            parameters.Add("summary", summary);
+            parameters.Add("md5", ComputeHashString(text));
             
-            byte[] input = Encoding.UTF8.GetBytes(text);
-            byte[] output = MD5.Create().ComputeHash(input);
-            StringBuilder hash = new StringBuilder();
-            for (int i = 0; i < output.Length; i++)
+            MakeRequest(Action.Edit, parameters);
+        }
+
+        public void MovePage(string fromTitle, string toTitle, string reason,
+            bool moveTalk, bool noRedirect)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("prop", "info");
+            parameters.Add("intoken", "move");
+            parameters.Add("titles", fromTitle);
+
+            XmlDocument doc = MakeRequest(Action.Query, parameters);
+            XmlNode node = doc.SelectSingleNode("/api/query/pages/page");
+            string token = "";
+            if (node.Attributes["movetoken"] != null)
             {
-                hash.Append(output[i].ToString("x2"));
+                token = node.Attributes["movetoken"].Value;
             }
-            parameters.Add("md5", hash.ToString());
-            
-            doc = MakeRequest(Action.Edit, parameters);
-            node = doc.SelectSingleNode("/api/edit");
-            if (node != null && node.Attributes["result"] != null)
+            string realTitle = node.Attributes["title"].Value;
+
+            parameters.Clear();
+            parameters.Add("from", fromTitle);
+            parameters.Add("to", toTitle);
+            parameters.Add("token", token);
+            parameters.Add("reason", reason);
+            if (moveTalk)
             {
-                string result = node.Attributes["result"].Value;
-                if (result != "Success")
-                {
-                    throw new EditException(result);
-                }
+                parameters.Add("movetalk");
             }
-            else
+            if (noRedirect)
             {
-                throw new EditException("Unknown error.");
+                parameters.Add("noredirect");
             }
+
+            MakeRequest(Action.Move, parameters);
         }
 
         public XmlDocument QueryTitles(ParameterCollection parameters, IEnumerable<string> titles)
@@ -255,6 +270,9 @@ namespace Claymore.SharpMediaWiki
             case Action.Edit:
                 query = "action=edit";
                 break;
+            case Action.Move:
+                query = "action=move";
+                break;
             }
             StringBuilder attributes = new StringBuilder();
             foreach (KeyValuePair<string, string> pair in parameters)
@@ -282,6 +300,22 @@ namespace Claymore.SharpMediaWiki
             using (StreamReader sr = new StreamReader(response.GetResponseStream()))
             {
                 doc.LoadXml(sr.ReadToEnd());
+            }
+
+            XmlNode node = doc.SelectSingleNode("error");
+            if (node != null)
+            {
+                string code = node.Attributes["code"].Value;
+                throw MakeActionException(action, code);
+            }
+            node = doc.SelectSingleNode(action.ToString().ToLower());
+            if (node != null && node.Attributes["result"] != null)
+            {
+                string result = node.Attributes["result"].Value;
+                if (result != "Success")
+                {
+                    throw MakeActionException(action, result);
+                }
             }
 
             if (action == Action.Login &&
@@ -372,6 +406,34 @@ namespace Claymore.SharpMediaWiki
             }
             return result.ToString();
         }
+
+        private static string ComputeHashString(string stringToHash)
+        {
+            byte[] input = Encoding.UTF8.GetBytes(stringToHash);
+            byte[] output = MD5.Create().ComputeHash(input);
+            StringBuilder hash = new StringBuilder();
+            for (int i = 0; i < output.Length; ++i)
+            {
+                hash.Append(output[i].ToString("x2"));
+            }
+            return hash.ToString();
+        }
+
+        private static WikiException MakeActionException(Action action, string error)
+        {
+            string message = action.ToString() + " failed with error '" + error + "'.";
+            switch (action)
+            {
+                case Action.Edit:
+                    return new EditException(message);
+                case Action.Login:
+                    return new LoginException(message);
+                case Action.Move:
+                    return new MoveException(message);
+                default:
+                    return new WikiException(message);
+            }
+        }
     }
 
     public enum Action
@@ -379,6 +441,7 @@ namespace Claymore.SharpMediaWiki
         Login,
         Logout,
         Edit,
+        Move,
         Query
     }
 
