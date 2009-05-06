@@ -136,6 +136,7 @@ namespace Claymore.SharpMediaWiki
         {
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("prop", "info|revisions");
+            parameters.Add("rvprop", "timestamp");
             parameters.Add("intoken", "edit");
             parameters.Add("titles", title);
             
@@ -213,40 +214,53 @@ namespace Claymore.SharpMediaWiki
             MakeRequest(Action.Move, parameters);
         }
 
-        public XmlDocument QueryTitles(ParameterCollection parameters, IEnumerable<string> titles)
+        public XmlDocument Query(QueryBy queryBy, ParameterCollection parameters, IEnumerable<string> ids)
         {
-            return QueryTitles(parameters, titles, 20);
+            return Query(queryBy, parameters, ids, 20);
         }
 
-        public XmlDocument QueryTitles(ParameterCollection parameters, IEnumerable<string> titles, int limit)
+        public XmlDocument Query(QueryBy queryBy, ParameterCollection parameters, IEnumerable<string> ids, int limit)
         {
+            string keyword = "";
+            switch (queryBy)
+            {
+                case QueryBy.IDs:
+                    keyword = "pageids";
+                    break;
+                case QueryBy.Revisions:
+                    keyword = "revids";
+                    break;
+                case QueryBy.Titles:
+                    keyword = "titles";
+                    break;
+            }
             XmlDocument document = new XmlDocument();
-            StringBuilder titlesString = new StringBuilder();
+            StringBuilder idsString = new StringBuilder();
             int index = 0;
-            foreach (string title in titles)
+            foreach (string id in ids)
             {
                 if (index < limit)
                 {
-                    titlesString.Append("|" + Uri.EscapeDataString(title));
+                    idsString.Append("|" + Uri.EscapeDataString(id));
                     ++index;
                 }
                 else
                 {
-                    titlesString.Remove(0, 1);
+                    idsString.Remove(0, 1);
                     ParameterCollection localParameters = new ParameterCollection(parameters);
-                    localParameters.Add("titles", titlesString.ToString());
+                    localParameters.Add(keyword, idsString.ToString());
                     string query = PrepareQuery(Action.Query, parameters);
                     FillDocumentWithQueryResults(query, document);
 
                     index = 1;
-                    titlesString = new StringBuilder("|" + Uri.EscapeDataString(title));
+                    idsString = new StringBuilder("|" + Uri.EscapeDataString(id));
                 }
             }
             if (index > 0)
             {
-                titlesString.Remove(0, 1);
+                idsString.Remove(0, 1);
                 ParameterCollection localParameters = new ParameterCollection(parameters);
-                localParameters.Add("titles", titlesString.ToString());
+                localParameters.Add(keyword, idsString.ToString());
                 string query = PrepareQuery(Action.Query, parameters);
                 FillDocumentWithQueryResults(query, document);
             }
@@ -465,5 +479,12 @@ namespace Claymore.SharpMediaWiki
         None,
         Watch,
         Unwatch
+    }
+
+    public enum QueryBy
+    {
+        Titles,
+        Revisions,
+        IDs
     }
 }
