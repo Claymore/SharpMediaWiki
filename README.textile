@@ -30,7 +30,7 @@ namespace Example
             parameters.Add("prop", "info");
             parameters.Add("redirects");
             string[] titles = new string[] { "WikiNode", "WP:HELP" };
-            XmlDocument xml = wiki.QueryTitles(parameters, titles);
+            XmlDocument xml = wiki.Query(QueryBy.Titles, parameters, titles);
             XmlNodeList redirects = xml.SelectNodes("/api/query/redirects/r");
             Console.Out.WriteLine(string.Format("Found {0} redirects.", redirects.Count));
             wiki.Logout();
