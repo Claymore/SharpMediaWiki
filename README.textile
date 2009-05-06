@@ -2,7 +2,8 @@
 
 h2. Dependencies
 
-* "Microsoft .NET Framework 3.5.":http://www.microsoft.com/downloads/details.aspx?FamilyId=333325FD-AE52-4E35-B531-508D977D32A6&displaylang=en
+You will need "Windows SDK for Windows Server 2008 and .NET Framework 3.5":http://www.microsoft.com/downloads/details.aspx?FamilyId=F26B1AA4-741A-433A-9BE5-FA919850BDBF&displaylang=en or "Microsoft Visual C# 2008":http://www.microsoft.com/express/vcsharp/ to compile the library on Windows. If you want to use it in a project,
+"Microsoft .NET Framework 3.5.":http://www.microsoft.com/downloads/details.aspx?FamilyId=333325FD-AE52-4E35-B531-508D977D32A6&displaylang=en is required. The library can also be compiled and used with "Mono 2.4":http://mono-project.com/Main_Page.
 
 h2. License
 
