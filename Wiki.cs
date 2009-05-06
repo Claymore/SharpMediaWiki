@@ -52,9 +52,8 @@ namespace Claymore.SharpMediaWiki
             MakeRequest(Action.Login, parameters);
 
             parameters.Clear();
-            parameters.Add("list", "users");
-            parameters.Add("usprop", "groups");
-            parameters.Add("ususers", user);
+            parameters.Add("meta", "userinfo");
+            parameters.Add("uiprop", "groups");
 
             XmlDocument doc = MakeRequest(Action.Query, parameters);
             XmlNodeList nodes = doc.SelectNodes("/api/query/users/user/groups/g");

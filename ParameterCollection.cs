@@ -37,6 +37,7 @@ namespace Claymore.SharpMediaWiki
         public void Clear()
         {
             _parameters.Clear();
+            _parameters.Add("format", "xml");
         }
 
         #region IEnumerable<KeyValuePair<string,string>> Members
