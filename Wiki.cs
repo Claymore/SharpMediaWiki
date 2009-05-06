@@ -125,11 +125,11 @@ namespace Claymore.SharpMediaWiki
 
         public void SavePage(string title, string text, string comment)
         {
-            SavePage(title, text, comment,
+            SavePage(title, "", text, comment,
                 MinorFlags.Minor, CreateFlags.NoCreate, WatchFlags.None);
         }
 
-        public void SavePage(string title, string text, string comment,
+        public void SavePage(string title, string section, string text, string comment,
             MinorFlags minor, CreateFlags create, WatchFlags watch)
         {
             ParameterCollection parameters = new ParameterCollection();
@@ -151,6 +151,10 @@ namespace Claymore.SharpMediaWiki
 
             parameters.Clear();
             parameters.Add("title", realTitle);
+            if (!string.IsNullOrEmpty(section))
+            {
+                parameters.Add("section", section);
+            }
             parameters.Add("token", editToken);
             parameters.Add("text", text);
             if (minor != MinorFlags.None)

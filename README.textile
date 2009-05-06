@@ -1,0 +1,35 @@
+﻿*SharpMediaWiki* is yet another C# interface to the "MediaWiki API":http://www.mediawiki.org/wiki/API. It was written as a replacement for heavy and slow "DotNetWikiBot":http://sourceforge.net/projects/dotnetwikibot/. The library supports "queries":http://www.mediawiki.org/wiki/API:Query, page "creation and editing":http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages. All requests are sent using GZip compression.
+
+h3. Dependencies
+
+* "Microsoft .NET Framework 3.5.":http://www.microsoft.com/downloads/details.aspx?FamilyId=333325FD-AE52-4E35-B531-508D977D32A6&displaylang=en
+
+h3. Tutorial
+
+Example usage:
+<pre><code>
+using System;
+using System.Xml;
+using Claymore.SharpMediaWiki;
+
+namespace Example
+{
+    internal class Program
+    {
+        static void Main(string[] args)
+        {
+            Wiki wiki = new Wiki("http://en.wikipedia.org");
+            wiki.Login("Username", "Secret");
+            string pageText = wiki.LoadPage("Wiki");
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("prop", "info");
+            parameters.Add("redirects");
+            string[] titles = new string[] { "WikiNode", "WP:HELP" };
+            XmlDocument xml = wiki.QueryTitles(parameters, titles);
+            XmlNodeList redirects = xml.SelectNodes("/api/query/redirects/r");
+            Console.Out.WriteLine(string.Format("Found {0} redirects.", redirects.Count));
+            wiki.Logout();
+        }
+    }
+}
+</code></pre>
