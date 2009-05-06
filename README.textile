@@ -1,4 +1,4 @@
-﻿<b>SharpMediaWiki</b> is yet another C# interface to the "MediaWiki API":http://www.mediawiki.org/wiki/API. It was written as a replacement for heavy and slow "DotNetWikiBot":http://sourceforge.net/projects/dotnetwikibot/. The library supports "queries":http://www.mediawiki.org/wiki/API:Query, page "creation and editing":http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages. All requests are sent using GZip compression.
+﻿*SharpMediaWiki* is yet another C# interface to the "MediaWiki API":http://www.mediawiki.org/wiki/API. It was written as a replacement for heavy and slow "DotNetWikiBot":http://sourceforge.net/projects/dotnetwikibot/. The library supports "queries":http://www.mediawiki.org/wiki/API:Query, page "creation and editing":http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages. All requests are sent using GZip compression.
 
 h2. Dependencies
 
