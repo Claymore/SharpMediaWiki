@@ -2,10 +2,12 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Text;
-using System.Xml;
+using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
+using System.Xml;
+using System.Web;
 
 namespace Claymore.SharpMediaWiki
 {
@@ -14,12 +16,15 @@ namespace Claymore.SharpMediaWiki
         private CookieCollection _cookies;
         private readonly Uri _uri;
         private bool _isBot;
+        private int _maxLag;
+        private string _userAgent;
+        private DateTime _lastQueryTime;
 
         /// <summary>
         /// Initializes a new instance of the Wiki class with the specified URI.
         /// </summary>
         /// <param name="url">A URI string.</param>
-        /// <example>Wiki wiki = new Wiki("http://en.wikipedia.org/")</example>
+        /// <example>Wiki wiki = new Wiki("http://en.wikipedia.org/");</example>
         /// <exception cref="System.ArgumentNullException" />
         /// <exception cref="System.UriFormatException" />
         public Wiki(string uri)
@@ -27,6 +32,10 @@ namespace Claymore.SharpMediaWiki
             UriBuilder ub = new UriBuilder(uri);
             _uri = ub.Uri;
             _isBot = false;
+            _maxLag = 5;
+            Version version = Assembly.GetExecutingAssembly().GetName().Version;
+            _userAgent = string.Format("SharpMediaWiki/{0}.{1}",
+                version.Major, version.Minor);
         }
 
         /// <summary>
@@ -35,6 +44,12 @@ namespace Claymore.SharpMediaWiki
         public bool Boot
         {
             get { return _isBot; }
+        }
+
+        public int MaxLag
+        {
+            get { return _maxLag; }
+            set { _maxLag = Math.Max(5, value); }
         }
 
         /// <summary>
@@ -92,24 +107,22 @@ namespace Claymore.SharpMediaWiki
         /// <returns>A System.String that contains raw text of the page.</returns>
         public string LoadPage(string title)
         {
+            TimeSpan diff = DateTime.Now - _lastQueryTime;
+            if (diff.Milliseconds < 1000)
+            {
+                Thread.Sleep(1000 - diff.Milliseconds);
+            }
+
             UriBuilder ub = new UriBuilder(_uri);
             ub.Path = "/w/index.php";
             ub.Query = string.Format("title={0}&redirect=no&action=raw&ctype=text/plain&dontcountme=1",
                     Uri.EscapeDataString(title));
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(ub.Uri);
-            request.AllowAutoRedirect = false;
-            request.Method = "GET";
-            request.AutomaticDecompression = DecompressionMethods.GZip;
-            request.ProtocolVersion = HttpVersion.Version10;
-            request.CookieContainer = new CookieContainer();
-            if (_cookies != null && _cookies.Count > 0)
+            HttpWebRequest request = PrepareRequest(ub.Uri, "GET");
+            WebResponse response = request.GetResponse();
+            using (StreamReader sr =
+                new StreamReader(response.GetResponseStream()))
             {
-                request.CookieContainer.Add(_cookies);
-            }
-
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            using (StreamReader sr = new StreamReader(response.GetResponseStream()))
-            {
+                _lastQueryTime = DateTime.Now;
                 return sr.ReadToEnd();
             }
         }
@@ -176,7 +189,7 @@ namespace Claymore.SharpMediaWiki
             parameters.Add("starttimestamp", starttimestamp);
             parameters.Add("summary", summary);
             parameters.Add("md5", ComputeHashString(text));
-            parameters.Add("maxlag", "5");
+            parameters.Add("maxlag", MaxLag.ToString());
             
             MakeRequest(Action.Edit, parameters);
         }
@@ -188,7 +201,7 @@ namespace Claymore.SharpMediaWiki
             parameters.Add("prop", "info");
             parameters.Add("intoken", "move");
             parameters.Add("titles", fromTitle);
-            parameters.Add("maxlag", "5");
+            parameters.Add("maxlag", MaxLag.ToString());
 
             XmlDocument doc = MakeRequest(Action.Query, parameters);
             XmlNode node = doc.SelectSingleNode("/api/query/pages/page");
@@ -216,12 +229,17 @@ namespace Claymore.SharpMediaWiki
             MakeRequest(Action.Move, parameters);
         }
 
-        public XmlDocument Query(QueryBy queryBy, ParameterCollection parameters, IEnumerable<string> ids)
+        public XmlDocument Query(QueryBy queryBy,
+            ParameterCollection parameters,
+            IEnumerable<string> ids)
         {
             return Query(queryBy, parameters, ids, 20);
         }
 
-        public XmlDocument Query(QueryBy queryBy, ParameterCollection parameters, IEnumerable<string> ids, int limit)
+        public XmlDocument Query(QueryBy queryBy,
+            ParameterCollection parameters,
+            IEnumerable<string> ids,
+            int limit)
         {
             string keyword = "";
             switch (queryBy)
@@ -243,7 +261,7 @@ namespace Claymore.SharpMediaWiki
             {
                 if (index < limit)
                 {
-                    idsString.Append("|" + Uri.EscapeDataString(id));
+                    idsString.Append("|" + id);
                     ++index;
                 }
                 else
@@ -251,11 +269,11 @@ namespace Claymore.SharpMediaWiki
                     idsString.Remove(0, 1);
                     ParameterCollection localParameters = new ParameterCollection(parameters);
                     localParameters.Add(keyword, idsString.ToString());
-                    string query = PrepareQuery(Action.Query, parameters);
+                    string query = PrepareQuery(Action.Query, localParameters);
                     FillDocumentWithQueryResults(query, document);
 
                     index = 1;
-                    idsString = new StringBuilder("|" + Uri.EscapeDataString(id));
+                    idsString = new StringBuilder("|" + id);
                 }
             }
             if (index > 0)
@@ -263,7 +281,7 @@ namespace Claymore.SharpMediaWiki
                 idsString.Remove(0, 1);
                 ParameterCollection localParameters = new ParameterCollection(parameters);
                 localParameters.Add(keyword, idsString.ToString());
-                string query = PrepareQuery(Action.Query, parameters);
+                string query = PrepareQuery(Action.Query, localParameters);
                 FillDocumentWithQueryResults(query, document);
             }
             return document;
@@ -311,7 +329,8 @@ namespace Claymore.SharpMediaWiki
             for (int tries = 0; tries < 3; ++tries)
             {
                 HttpWebRequest request = PrepareRequest();
-                using (StreamWriter sw = new StreamWriter(request.GetRequestStream()))
+                using (StreamWriter sw =
+                    new StreamWriter(request.GetRequestStream()))
                 {
                     sw.Write(query);
                 }
@@ -324,7 +343,8 @@ namespace Claymore.SharpMediaWiki
                 }
                 else
                 {
-                    using (StreamReader sr = new StreamReader(response.GetResponseStream()))
+                    using (StreamReader sr =
+                        new StreamReader(response.GetResponseStream()))
                     {
                         doc.LoadXml(sr.ReadToEnd());
                     }
@@ -332,7 +352,7 @@ namespace Claymore.SharpMediaWiki
                 }
             }
 
-            XmlNode node = doc.SelectSingleNode("error");
+            XmlNode node = doc.SelectSingleNode("/api/error");
             if (node != null)
             {
                 string code = node.Attributes["code"].Value;
@@ -359,16 +379,25 @@ namespace Claymore.SharpMediaWiki
 
         private void FillDocumentWithQueryResults(string query, XmlDocument document)
         {
+            TimeSpan diff = DateTime.Now - _lastQueryTime;
+            if (diff.Milliseconds < 2000)
+            {
+                Thread.Sleep(2000 - diff.Milliseconds);
+            }
+
             string xml = "";
             HttpWebRequest request = PrepareRequest();
-            using (StreamWriter sw = new StreamWriter(request.GetRequestStream()))
+            using (StreamWriter sw =
+                new StreamWriter(request.GetRequestStream()))
             {
                 sw.Write(query);
             }
             WebResponse response = request.GetResponse();
-            using (StreamReader sr = new StreamReader(response.GetResponseStream()))
+            using (StreamReader sr =
+                new StreamReader(response.GetResponseStream()))
             {
                 xml = sr.ReadToEnd();
+                _lastQueryTime = DateTime.Now;
             }
             if (!document.HasChildNodes)
             {
@@ -396,17 +425,22 @@ namespace Claymore.SharpMediaWiki
         {
             UriBuilder ub = new UriBuilder(_uri);
             ub.Path = "/w/api.php";
-            return PrepareRequest(ub.Uri);
+            return PrepareRequest(ub.Uri, "POST");
         }
 
-        private HttpWebRequest PrepareRequest(Uri uri)
+        private HttpWebRequest PrepareRequest(Uri uri, string method)
         {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
             request.AllowAutoRedirect = false;
-            request.Method = "POST";
-            request.ContentType = "application/x-www-form-urlencoded";
-            request.AutomaticDecompression = DecompressionMethods.GZip;
+            request.Method = method;
+            if (request.Method == "POST")
+            {
+                request.ContentType = "application/x-www-form-urlencoded";
+            }
+            request.AutomaticDecompression = DecompressionMethods.GZip |
+                DecompressionMethods.Deflate;
             request.ProtocolVersion = HttpVersion.Version10;
+            request.UserAgent = _userAgent;
             request.CookieContainer = new CookieContainer();
             if (_cookies != null && _cookies.Count > 0)
             {
