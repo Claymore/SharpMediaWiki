@@ -1,9 +1,8 @@
-﻿*SharpMediaWiki* is yet another C# interface to the "MediaWiki API":http://www.mediawiki.org/wiki/API. It was written as a replacement for heavy and slow "DotNetWikiBot":http://sourceforge.net/projects/dotnetwikibot/. The library provides convient interface for continuous "property queries":http://www.mediawiki.org/wiki/API:Query_-_Properties, "enumerations":http://www.mediawiki.org/wiki/API:Query_-_Lists, page "creation / editing":http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages and "moving":http://www.mediawiki.org/wiki/API:Edit_-_Move. All queries returns instances of "XmlDocument":http://msdn.microsoft.com/en-us/library/system.xml.xmldocument.aspx class which can be searched with "XPath":http://www.w3.org/TR/xpath.
+﻿*SharpMediaWiki* is yet another C# interface to the "MediaWiki API":http://www.mediawiki.org/wiki/API. It was written as a replacement for heavy and slow "DotNetWikiBot":http://sourceforge.net/projects/dotnetwikibot/. The library provides convient interface for continuous "property queries":http://www.mediawiki.org/wiki/API:Query_-_Properties, "enumerations":http://www.mediawiki.org/wiki/API:Query_-_Lists, page "creation / editing":http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages and "moving":http://www.mediawiki.org/wiki/API:Edit_-_Move. All queries return instances of "XmlDocument":http://msdn.microsoft.com/en-us/library/system.xml.xmldocument.aspx class which can be searched with "XPath":http://www.w3.org/TR/xpath.
 
 h2. Dependencies
 
-You will need "Windows SDK for Windows Server 2008 and .NET Framework 3.5":http://www.microsoft.com/downloads/details.aspx?FamilyId=F26B1AA4-741A-433A-9BE5-FA919850BDBF&displaylang=en or "Microsoft Visual C# 2008":http://www.microsoft.com/express/vcsharp/ to compile the library on Windows. If you want to use it in a project,
-"Microsoft .NET Framework 3.5.":http://www.microsoft.com/downloads/details.aspx?FamilyId=333325FD-AE52-4E35-B531-508D977D32A6&displaylang=en is required. The library can also be compiled and used with "Mono 2.4":http://mono-project.com/Main_Page.
+You will need "Microsoft .NET Framework 3.5":http://www.microsoft.com/downloads/details.aspx?FamilyId=333325FD-AE52-4E35-B531-508D977D32A6&displaylang=ento to compile and use the library on Windows. It can be also compiled with "Mono 2.4":http://mono-project.com/Main_Page (at least "MoMA":http://www.mono-project.com/MoMA didn't report any problems).
 
 h2. License
 
@@ -13,33 +12,33 @@ h2. Usage
 
 Example usage:
 <pre><code>
- using System;
- using System.Xml;
- using Claymore.SharpMediaWiki;
-
- namespace Example
- {
-     internal class Program
-     {
-         static void Main(string[] args)
-         {
-             Wiki wiki = new Wiki("http://en.wikipedia.org");
-             // Login into en.wikipedia.org as "Username".
-             wiki.Login("Username", "Secret");
-             // Load raw text of the page titled "Wiki".
-             string pageText = wiki.LoadPage("Wiki");
-             ParameterCollection parameters = new ParameterCollection();
-             // We want page information and automatic resolving of redirects.
-             parameters.Add("prop", "info");
-             parameters.Add("redirects");
-             string[] titles = new string[] { "WikiNode", "WP:HELP" };
-             // Make the query.
-             XmlDocument xml = wiki.Query(QueryBy.Titles, parameters, titles);
-             // Select redirect nodes.
-             XmlNodeList redirects = xml.SelectNodes("/api/query/redirects/r");
-             Console.Out.WriteLine(string.Format("Found {0} redirects.", redirects.Count));
-             wiki.Logout();
-         }
-     }
- }
+using System;
+using System.Xml;
+using Claymore.SharpMediaWiki;
+</code><code>
+namespace Example
+{
+    internal class Program
+    {
+        static void Main(string[] args)
+        {
+            Wiki wiki = new Wiki("http://en.wikipedia.org");
+            // Login into en.wikipedia.org as "Username".
+            wiki.Login("Username", "Secret");
+            // Load raw text of the page titled "Wiki".
+            string pageText = wiki.LoadPage("Wiki");
+            ParameterCollection parameters = new ParameterCollection();
+            // We want page information and automatic resolving of redirects.
+            parameters.Add("prop", "info");
+            parameters.Add("redirects");
+            string[] titles = new string[] { "WikiNode", "WP:HELP" };
+            // Make the query.
+            XmlDocument xml = wiki.Query(QueryBy.Titles, parameters, titles);
+            // Select redirect nodes.
+            XmlNodeList redirects = xml.SelectNodes("/api/query/redirects/r");
+            Console.Out.WriteLine(string.Format("Found {0} redirects.", redirects.Count));
+            wiki.Logout();
+        }
+    }
+}
 </code></pre>
