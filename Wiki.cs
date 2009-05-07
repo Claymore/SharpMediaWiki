@@ -22,7 +22,8 @@ namespace Claymore.SharpMediaWiki
         private bool _highLimits;
         private string _username;
         private bool _isBot;
-        private int _sleep;
+        private int _sleepBetweenEdits;
+        private int _sleepBetweenQueries;
 
         /// <summary>
         /// Initializes a new instance of the Wiki class with the specified URI.
@@ -38,7 +39,8 @@ namespace Claymore.SharpMediaWiki
             _highLimits = false;
             _isBot = true;
             _maxLag = 5;
-            _sleep = 10;
+            SleepBetweenEdits = 10;
+            SleepBetweenEdits = 2;
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             _userAgent = string.Format("SharpMediaWiki/{0}.{1}",
                 version.Major, version.Minor);
@@ -52,7 +54,12 @@ namespace Claymore.SharpMediaWiki
 
         public int SleepBetweenEdits
         {
-            set { _sleep = value * 1000; }
+            set { _sleepBetweenEdits = value * 1000; }
+        }
+
+        public int SleepBetweenQueries
+        {
+            set { _sleepBetweenQueries = value * 1000; }
         }
 
         /// <summary>
@@ -121,9 +128,9 @@ namespace Claymore.SharpMediaWiki
         public string LoadPage(string title)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
-            if (diff.Milliseconds < 1000)
+            if (diff.Milliseconds < _sleepBetweenQueries)
             {
-                Thread.Sleep(1000 - diff.Milliseconds);
+                Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
             }
 
             UriBuilder ub = new UriBuilder(_uri);
@@ -144,6 +151,20 @@ namespace Claymore.SharpMediaWiki
         {
             SavePage(title, "", text, comment,
                 MinorFlags.Minor, CreateFlags.NoCreate, WatchFlags.None, SaveFlags.Replace);
+        }
+
+        public void AppendTextToPage(string title, string text, string comment,
+            MinorFlags minor, WatchFlags watch)
+        {
+            SavePage(title, null, text, comment, minor, CreateFlags.NoCreate,
+                watch, SaveFlags.Append);
+        }
+
+        public void PrependTextToPage(string title, string text, string comment,
+            MinorFlags minor, WatchFlags watch)
+        {
+            SavePage(title, null, text, comment, minor, CreateFlags.NoCreate,
+                watch, SaveFlags.Prepend);
         }
 
         /// <summary>
@@ -370,9 +391,9 @@ namespace Claymore.SharpMediaWiki
         public XmlDocument MakeRequest(Action action, ParameterCollection parameters)
         {
             TimeSpan diff = DateTime.Now - _lastEditTime;
-            if (action == Action.Edit && diff.Milliseconds < _sleep)
+            if (action == Action.Edit && diff.Milliseconds < _sleepBetweenEdits)
             {
-                Thread.Sleep(_sleep - diff.Milliseconds);
+                Thread.Sleep(_sleepBetweenEdits - diff.Milliseconds);
             }
 
             XmlDocument doc = new XmlDocument();
@@ -437,9 +458,9 @@ namespace Claymore.SharpMediaWiki
         private Parameter FillDocumentWithQueryResults(string query, XmlDocument document)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
-            if (diff.Milliseconds < 2000)
+            if (diff.Milliseconds < _sleepBetweenQueries)
             {
-                Thread.Sleep(2000 - diff.Milliseconds);
+                Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
             }
 
             string xml = "";
