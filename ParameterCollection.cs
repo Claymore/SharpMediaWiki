@@ -24,7 +24,7 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new ArgumentException("You can't add 'action' as a parameter.");
             }
-            _parameters.Add(key, value);
+            _parameters.Add(key, string.IsNullOrEmpty(value) ? "1" : value);
         }
 
         public void Add(string key)

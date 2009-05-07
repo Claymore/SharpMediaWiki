@@ -18,7 +18,11 @@ namespace Claymore.SharpMediaWiki
         private int _maxLag;
         private string _userAgent;
         private DateTime _lastQueryTime;
+        private DateTime _lastEditTime;
         private bool _highLimits;
+        private string _username;
+        private bool _isBot;
+        private int _sleep;
 
         /// <summary>
         /// Initializes a new instance of the Wiki class with the specified URI.
@@ -32,7 +36,9 @@ namespace Claymore.SharpMediaWiki
             UriBuilder ub = new UriBuilder(uri);
             _uri = ub.Uri;
             _highLimits = false;
+            _isBot = true;
             _maxLag = 5;
+            _sleep = 10;
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             _userAgent = string.Format("SharpMediaWiki/{0}.{1}",
                 version.Major, version.Minor);
@@ -44,6 +50,11 @@ namespace Claymore.SharpMediaWiki
             set { _maxLag = Math.Max(5, value); }
         }
 
+        public int SleepBetweenEdits
+        {
+            set { _sleep = value * 1000; }
+        }
+
         /// <summary>
         /// Logs into the Wiki as 'user' with 'password'.
         /// </summary>
@@ -53,24 +64,32 @@ namespace Claymore.SharpMediaWiki
         /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Login"/></remarks>
         public void Login(string user, string password)
         {
+            if (_cookies != null && _cookies.Count > 0 && user == _username)
+            {
+                return;
+            }
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("lgname", user);
             parameters.Add("lgpassword", password);
 
             MakeRequest(Action.Login, parameters);
+            _username = user;
 
             parameters.Clear();
             parameters.Add("meta", "userinfo");
             parameters.Add("uiprop", "rights");
 
             XmlDocument doc = MakeRequest(Action.Query, parameters);
-            XmlNodeList nodes = doc.SelectNodes("/api/userinfo/rights/r");
+            XmlNodeList nodes = doc.SelectNodes("/api/query/userinfo/rights/r");
             foreach (XmlNode node in nodes)
             {
-                if (node.Value == "apihighlimits")
+                if (node.FirstChild.Value == "apihighlimits")
                 {
                     _highLimits = true;
-                    break;
+                }
+                else if (node.FirstChild.Value == "bot")
+                {
+                    _isBot = true;
                 }
             }
         }
@@ -90,6 +109,8 @@ namespace Claymore.SharpMediaWiki
             }
             WebResponse response = request.GetResponse();
             response.Close();
+            _username = "";
+            _cookies = null;
         }
 
         /// <summary>
@@ -122,7 +143,7 @@ namespace Claymore.SharpMediaWiki
         public void SavePage(string title, string text, string comment)
         {
             SavePage(title, "", text, comment,
-                MinorFlags.Minor, CreateFlags.NoCreate, WatchFlags.None);
+                MinorFlags.Minor, CreateFlags.NoCreate, WatchFlags.None, SaveFlags.Replace);
         }
 
         /// <summary>
@@ -137,7 +158,7 @@ namespace Claymore.SharpMediaWiki
         /// <param name="watch">Watch flag.</param>
         /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages"/></remarks>
         public void SavePage(string title, string section, string text, string summary,
-            MinorFlags minor, CreateFlags create, WatchFlags watch)
+            MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode)
         {
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("prop", "info|revisions");
@@ -159,12 +180,11 @@ namespace Claymore.SharpMediaWiki
 
             parameters.Clear();
             parameters.Add("title", realTitle);
-            if (!string.IsNullOrEmpty(section))
+            if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
             {
                 parameters.Add("section", section);
             }
             parameters.Add("token", editToken);
-            parameters.Add("text", text);
             if (minor != MinorFlags.None)
             {
                 parameters.Add(minor.ToString().ToLower());
@@ -176,6 +196,22 @@ namespace Claymore.SharpMediaWiki
             if (watch != WatchFlags.None)
             {
                 parameters.Add(watch.ToString().ToLower());
+            }
+            if (mode == SaveFlags.Append)
+            {
+                parameters.Add("appendtext", text);
+            }
+            else if (mode == SaveFlags.Prepend)
+            {
+                parameters.Add("prependtext", text);
+            }
+            else
+            {
+                parameters.Add("text", text);
+            }
+            if (_isBot)
+            {
+                parameters.Add("bot");
             }
             parameters.Add("basetimestamp", baseTimeStamp);
             parameters.Add("starttimestamp", starttimestamp);
@@ -325,9 +361,7 @@ namespace Claymore.SharpMediaWiki
             {
                 attributes.Append(string.Format("&{0}={1}",
                     pair.Key,
-                    string.IsNullOrEmpty(pair.Value)
-                        ? "1"
-                        : EscapeString(pair.Value)));
+                    EscapeString(pair.Value)));
             }
             query += attributes.ToString();
             return query;
@@ -335,6 +369,12 @@ namespace Claymore.SharpMediaWiki
 
         public XmlDocument MakeRequest(Action action, ParameterCollection parameters)
         {
+            TimeSpan diff = DateTime.Now - _lastEditTime;
+            if (action == Action.Edit && diff.Milliseconds < _sleep)
+            {
+                Thread.Sleep(_sleep - diff.Milliseconds);
+            }
+
             XmlDocument doc = new XmlDocument();
             HttpWebResponse response = null;
             string query = PrepareQuery(action, parameters);
@@ -385,6 +425,11 @@ namespace Claymore.SharpMediaWiki
                 response.Cookies.Count > 0)
             {
                 _cookies = response.Cookies;
+            }
+            
+            if (action == Action.Edit)
+            {
+                _lastEditTime = DateTime.Now;
             }
             return doc;
         }
@@ -586,5 +631,12 @@ namespace Claymore.SharpMediaWiki
         Titles,
         Revisions,
         IDs
+    }
+
+    public enum SaveFlags
+    {
+        Replace,
+        Append,
+        Prepend
     }
 }
