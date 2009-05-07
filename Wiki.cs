@@ -15,10 +15,10 @@ namespace Claymore.SharpMediaWiki
     {
         private CookieCollection _cookies;
         private readonly Uri _uri;
-        private bool _isBot;
         private int _maxLag;
         private string _userAgent;
         private DateTime _lastQueryTime;
+        private bool _highLimits;
 
         /// <summary>
         /// Initializes a new instance of the Wiki class with the specified URI.
@@ -31,19 +31,11 @@ namespace Claymore.SharpMediaWiki
         {
             UriBuilder ub = new UriBuilder(uri);
             _uri = ub.Uri;
-            _isBot = false;
+            _highLimits = false;
             _maxLag = 5;
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             _userAgent = string.Format("SharpMediaWiki/{0}.{1}",
                 version.Major, version.Minor);
-        }
-
-        /// <summary>
-        /// Indicates if logged in user has bot rights.
-        /// </summary>
-        public bool Boot
-        {
-            get { return _isBot; }
         }
 
         public int MaxLag
@@ -69,15 +61,15 @@ namespace Claymore.SharpMediaWiki
 
             parameters.Clear();
             parameters.Add("meta", "userinfo");
-            parameters.Add("uiprop", "groups");
+            parameters.Add("uiprop", "rights");
 
             XmlDocument doc = MakeRequest(Action.Query, parameters);
-            XmlNodeList nodes = doc.SelectNodes("/api/query/users/user/groups/g");
+            XmlNodeList nodes = doc.SelectNodes("/api/userinfo/rights/r");
             foreach (XmlNode node in nodes)
             {
-                if (node.Value == "bot")
+                if (node.Value == "apihighlimits")
                 {
-                    _isBot = true;
+                    _highLimits = true;
                     break;
                 }
             }
@@ -229,11 +221,31 @@ namespace Claymore.SharpMediaWiki
             MakeRequest(Action.Move, parameters);
         }
 
+        public XmlDocument Enumerate(ParameterCollection parameters, bool getAll)
+        {
+            XmlDocument result = new XmlDocument();
+            string query = PrepareQuery(Action.Query, parameters);
+            Parameter parameter = null;
+            while ((parameter = FillDocumentWithQueryResults(query, result)) != null)
+            {
+                if (!getAll)
+                {
+                    break;
+                }
+                string limitName = parameter.Name.Substring(0, 2) + "limit";
+                ParameterCollection localParameters = new ParameterCollection(parameters);
+                localParameters.Set(parameter.Name, parameter.Value);
+                localParameters.Set(limitName, "max");
+                query = PrepareQuery(Action.Query, localParameters);
+            }
+            return result;
+        }
+
         public XmlDocument Query(QueryBy queryBy,
             ParameterCollection parameters,
             IEnumerable<string> ids)
         {
-            return Query(queryBy, parameters, ids, 20);
+            return Query(queryBy, parameters, ids, _highLimits ? 500 : 50);
         }
 
         public XmlDocument Query(QueryBy queryBy,
@@ -377,7 +389,7 @@ namespace Claymore.SharpMediaWiki
             return doc;
         }
 
-        private void FillDocumentWithQueryResults(string query, XmlDocument document)
+        private Parameter FillDocumentWithQueryResults(string query, XmlDocument document)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
             if (diff.Milliseconds < 2000)
@@ -402,6 +414,13 @@ namespace Claymore.SharpMediaWiki
             if (!document.HasChildNodes)
             {
                 document.LoadXml(xml);
+                XmlNode n = document.SelectSingleNode("/api/query-continue");
+                if (n != null)
+                {
+                    string name = n.FirstChild.Attributes[0].Name;
+                    string value = n.FirstChild.Attributes[0].Value;
+                    return new Parameter(value, name);
+                }
             }
             else
             {
@@ -418,7 +437,16 @@ namespace Claymore.SharpMediaWiki
                         root.AppendChild(importedNode);
                     }
                 }
+                
+                n = doc.SelectSingleNode("/api/query-continue");
+                if (n != null)
+                {
+                    string name = n.FirstChild.Attributes[0].Name;
+                    string value = n.FirstChild.Attributes[0].Value;
+                    return new Parameter(value, name);
+                }
             }
+            return null;
         }
 
         private HttpWebRequest PrepareRequest()
@@ -496,6 +524,28 @@ namespace Claymore.SharpMediaWiki
                     return new MoveException(message);
                 default:
                     return new WikiException(message);
+            }
+        }
+
+        private class Parameter
+        {
+            private readonly string _value;
+            private readonly string _name;
+
+            public Parameter(string value, string name)
+            {
+                _value = value;
+                _name = name;
+            }
+
+            public string Value
+            {
+                get { return _value; }
+            }
+
+            public string Name
+            {
+                get { return _name; }
             }
         }
     }

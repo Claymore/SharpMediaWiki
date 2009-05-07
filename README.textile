@@ -1,4 +1,4 @@
-﻿*SharpMediaWiki* is yet another C# interface to the "MediaWiki API":http://www.mediawiki.org/wiki/API. It was written as a replacement for heavy and slow "DotNetWikiBot":http://sourceforge.net/projects/dotnetwikibot/. The library supports "queries":http://www.mediawiki.org/wiki/API:Query, page "creation and editing":http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages. All requests are sent using GZip compression.
+﻿*SharpMediaWiki* is yet another C# interface to the "MediaWiki API":http://www.mediawiki.org/wiki/API. It was written as a replacement for heavy and slow "DotNetWikiBot":http://sourceforge.net/projects/dotnetwikibot/. The library provides convient interface for continuous "property queries":http://www.mediawiki.org/wiki/API:Query_-_Properties, "enumerations":http://www.mediawiki.org/wiki/API:Query_-_Lists, page "creation / editing":http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages and "moving":http://www.mediawiki.org/wiki/API:Edit_-_Move. All queries returns instances of "XmlDocument":http://msdn.microsoft.com/en-us/library/system.xml.xmldocument.aspx class which can be searched with "XPath":http://www.w3.org/TR/xpath.
 
 h2. Dependencies
 
@@ -13,28 +13,33 @@ h2. Usage
 
 Example usage:
 <pre><code>
-using System;
-using System.Xml;
-using Claymore.SharpMediaWiki;
+ using System;
+ using System.Xml;
+ using Claymore.SharpMediaWiki;
 
-namespace Example
-{
-    internal class Program
-    {
-        static void Main(string[] args)
-        {
-            Wiki wiki = new Wiki("http://en.wikipedia.org");
-            wiki.Login("Username", "Secret");
-            string pageText = wiki.LoadPage("Wiki");
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("prop", "info");
-            parameters.Add("redirects");
-            string[] titles = new string[] { "WikiNode", "WP:HELP" };
-            XmlDocument xml = wiki.Query(QueryBy.Titles, parameters, titles);
-            XmlNodeList redirects = xml.SelectNodes("/api/query/redirects/r");
-            Console.Out.WriteLine(string.Format("Found {0} redirects.", redirects.Count));
-            wiki.Logout();
-        }
-    }
-}
+ namespace Example
+ {
+     internal class Program
+     {
+         static void Main(string[] args)
+         {
+             Wiki wiki = new Wiki("http://en.wikipedia.org");
+             // Login into en.wikipedia.org as "Username".
+             wiki.Login("Username", "Secret");
+             // Load raw text of the page titled "Wiki".
+             string pageText = wiki.LoadPage("Wiki");
+             ParameterCollection parameters = new ParameterCollection();
+             // We want page information and automatic resolving of redirects.
+             parameters.Add("prop", "info");
+             parameters.Add("redirects");
+             string[] titles = new string[] { "WikiNode", "WP:HELP" };
+             // Make the query.
+             XmlDocument xml = wiki.Query(QueryBy.Titles, parameters, titles);
+             // Select redirect nodes.
+             XmlNodeList redirects = xml.SelectNodes("/api/query/redirects/r");
+             Console.Out.WriteLine(string.Format("Found {0} redirects.", redirects.Count));
+             wiki.Logout();
+         }
+     }
+ }
 </code></pre>

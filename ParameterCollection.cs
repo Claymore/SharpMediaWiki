@@ -55,5 +55,17 @@ namespace Claymore.SharpMediaWiki
         }
 
         #endregion
+
+        public void Set(string name, string value)
+        {
+            if (_parameters.ContainsKey(name))
+            {
+                _parameters[name] = value;
+            }
+            else
+            {
+                _parameters.Add(name, value);
+            }
+        }
     }
 }
