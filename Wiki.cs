@@ -283,9 +283,22 @@ namespace Claymore.SharpMediaWiki
             XmlDocument result = new XmlDocument();
             string query = PrepareQuery(Action.Query, parameters);
             Parameter parameter = null;
-            while ((parameter = FillDocumentWithQueryResults(query, result)) != null)
+
+            while (true)
             {
-                if (!getAll)
+                for (int tries = 0; tries < 3; ++tries)
+                {
+                    try
+                    {
+                        parameter = FillDocumentWithQueryResults(query, result);
+                        break;
+                    }
+                    catch (WebException)
+                    {
+                        continue;
+                    }
+                }
+                if (parameter == null || !getAll)
                 {
                     break;
                 }
