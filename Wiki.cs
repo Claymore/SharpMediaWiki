@@ -40,7 +40,7 @@ namespace Claymore.SharpMediaWiki
             _isBot = true;
             _maxLag = 5;
             SleepBetweenEdits = 10;
-            SleepBetweenEdits = 2;
+            SleepBetweenQueries = 10;
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             _userAgent = string.Format("SharpMediaWiki/{0}.{1}",
                 version.Major, version.Minor);
@@ -468,6 +468,72 @@ namespace Claymore.SharpMediaWiki
             return doc;
         }
 
+        public XmlDocument MakeRequest(WikiAction query)
+        {
+            TimeSpan diff = DateTime.Now - _lastEditTime;
+            if (query.Action == Action.Edit && diff.Milliseconds < _sleepBetweenEdits)
+            {
+                Thread.Sleep(_sleepBetweenEdits - diff.Milliseconds);
+            }
+
+            XmlDocument doc = new XmlDocument();
+            HttpWebResponse response = null;
+            for (int tries = 0; tries < 3; ++tries)
+            {
+                HttpWebRequest request = PrepareRequest();
+                using (StreamWriter sw =
+                    new StreamWriter(request.GetRequestStream()))
+                {
+                    sw.Write(query.ToString());
+                }
+                response = (HttpWebResponse)request.GetResponse();
+                string[] retryAfter = response.Headers.GetValues("Retry-After");
+                if (retryAfter != null)
+                {
+                    int lagInSeconds = int.Parse(retryAfter[0]);
+                    Thread.Sleep(lagInSeconds * 1000);
+                }
+                else
+                {
+                    using (StreamReader sr =
+                        new StreamReader(response.GetResponseStream()))
+                    {
+                        doc.LoadXml(sr.ReadToEnd());
+                    }
+                    break;
+                }
+            }
+
+            XmlNode node = doc.SelectSingleNode("/api/error");
+            if (node != null)
+            {
+                string code = node.Attributes["code"].Value;
+                throw MakeActionException(query.Action, code);
+            }
+            node = doc.SelectSingleNode(query.Action.ToString().ToLower());
+            if (node != null && node.Attributes["result"] != null)
+            {
+                string result = node.Attributes["result"].Value;
+                if (result != "Success")
+                {
+                    throw MakeActionException(query.Action, result);
+                }
+            }
+
+            if (query.Action == Action.Login &&
+                response.Cookies != null &&
+                response.Cookies.Count > 0)
+            {
+                _cookies = response.Cookies;
+            }
+
+            if (query.Action == Action.Edit)
+            {
+                _lastEditTime = DateTime.Now;
+            }
+            return doc;
+        }
+
         private Parameter FillDocumentWithQueryResults(string query, XmlDocument document)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
@@ -562,7 +628,7 @@ namespace Claymore.SharpMediaWiki
         /// <param name="text">The string to escape.</param>
         /// <returns>A System.String that contains the escaped representation of stringToEscape.</returns>
         /// <exception cref="System.ArgumentNullException">stringToEscape is null.</exception>
-        private static string EscapeString(string stringToEscape)
+        public static string EscapeString(string stringToEscape)
         {
             const int max = 32766;
             StringBuilder result = new StringBuilder();
@@ -631,6 +697,8 @@ namespace Claymore.SharpMediaWiki
 
     public enum Action
     {
+        SiteMatrix,
+        Review,
         Login,
         Logout,
         Edit,

@@ -53,6 +53,7 @@
     <Compile Include="Wiki.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="WikiException.cs" />
+    <Compile Include="WikiAction.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="License.txt" />
