@@ -40,7 +40,7 @@ namespace Claymore.SharpMediaWiki
             _isBot = true;
             _maxLag = 5;
             SleepBetweenEdits = 10;
-            SleepBetweenEdits = 2;
+            SleepBetweenQueries = 10;
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             _userAgent = string.Format("SharpMediaWiki/{0}.{1}",
                 version.Major, version.Minor);
