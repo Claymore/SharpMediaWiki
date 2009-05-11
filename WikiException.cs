@@ -69,4 +69,21 @@ namespace Claymore.SharpMediaWiki
         {
         }
     }
+
+    public class WikiPageNotFound : WikiException
+    {
+        public WikiPageNotFound()
+        {
+        }
+
+        public WikiPageNotFound(string message)
+            : base(message)
+        {
+        }
+
+        public WikiPageNotFound(string message, Exception inner)
+            : base(message, inner)
+        {
+        }
+    }
 }

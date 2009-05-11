@@ -137,14 +137,30 @@ namespace Claymore.SharpMediaWiki
             ub.Path = "/w/index.php";
             ub.Query = string.Format("title={0}&redirect=no&action=raw&ctype=text/plain&dontcountme=1",
                     Uri.EscapeDataString(title));
-            HttpWebRequest request = PrepareRequest(ub.Uri, "GET");
-            WebResponse response = request.GetResponse();
-            using (StreamReader sr =
-                new StreamReader(response.GetResponseStream()))
+            for (int tries = 0; tries < 3; ++tries)
             {
-                _lastQueryTime = DateTime.Now;
-                return sr.ReadToEnd();
+                try
+                {
+                    HttpWebRequest request = PrepareRequest(ub.Uri, "GET");
+                    WebResponse response = request.GetResponse();
+                    using (StreamReader sr =
+                        new StreamReader(response.GetResponseStream()))
+                    {
+                        _lastQueryTime = DateTime.Now;
+                        return sr.ReadToEnd();
+                    }
+                }
+                catch (WebException e)
+                {
+                    _lastQueryTime = DateTime.Now;
+                    if (e.Status == WebExceptionStatus.ProtocolError &&
+                        e.Message.Contains("(404)"))
+                    {
+                        throw new WikiPageNotFound(title + " not found", e);
+                    }
+                }
             }
+            return null;
         }
 
         public void SavePage(string title, string text, string comment)
@@ -181,66 +197,77 @@ namespace Claymore.SharpMediaWiki
         public void SavePage(string title, string section, string text, string summary,
             MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode)
         {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("prop", "info|revisions");
-            parameters.Add("rvprop", "timestamp");
-            parameters.Add("intoken", "edit");
-            parameters.Add("titles", title);
-            
-            XmlDocument doc = MakeRequest(Action.Query, parameters);
-            XmlNode node = doc.SelectSingleNode("/api/query/pages/page");
-            string editToken = "";
-            if (node.Attributes["edittoken"] != null)
+            for (int tries = 0; tries < 3; ++tries)
             {
-                editToken = node.Attributes["edittoken"].Value;
-            }
-            string realTitle = node.Attributes["title"].Value;
-            node = doc.SelectSingleNode("/api/query/pages/page/revisions/rev");
-            string baseTimeStamp = node.Attributes["timestamp"].Value;
-            string starttimestamp = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+                try
+                {
+                    ParameterCollection parameters = new ParameterCollection();
+                    parameters.Add("prop", "info|revisions");
+                    parameters.Add("rvprop", "timestamp");
+                    parameters.Add("intoken", "edit");
+                    parameters.Add("titles", title);
 
-            parameters.Clear();
-            parameters.Add("title", realTitle);
-            if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
-            {
-                parameters.Add("section", section);
+                    XmlDocument doc = MakeRequest(Action.Query, parameters);
+                    XmlNode node = doc.SelectSingleNode("/api/query/pages/page");
+                    string editToken = "";
+                    if (node.Attributes["edittoken"] != null)
+                    {
+                        editToken = node.Attributes["edittoken"].Value;
+                    }
+                    string realTitle = node.Attributes["title"].Value;
+                    node = doc.SelectSingleNode("/api/query/pages/page/revisions/rev");
+                    string baseTimeStamp = node.Attributes["timestamp"].Value;
+                    string starttimestamp = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+                    parameters.Clear();
+                    parameters.Add("title", realTitle);
+                    if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
+                    {
+                        parameters.Add("section", section);
+                    }
+                    parameters.Add("token", editToken);
+                    if (minor != MinorFlags.None)
+                    {
+                        parameters.Add(minor.ToString().ToLower());
+                    }
+                    if (create != CreateFlags.None)
+                    {
+                        parameters.Add(create.ToString().ToLower());
+                    }
+                    if (watch != WatchFlags.None)
+                    {
+                        parameters.Add(watch.ToString().ToLower());
+                    }
+                    if (mode == SaveFlags.Append)
+                    {
+                        parameters.Add("appendtext", text);
+                    }
+                    else if (mode == SaveFlags.Prepend)
+                    {
+                        parameters.Add("prependtext", text);
+                    }
+                    else
+                    {
+                        parameters.Add("text", text);
+                    }
+                    if (_isBot)
+                    {
+                        parameters.Add("bot");
+                    }
+                    parameters.Add("basetimestamp", baseTimeStamp);
+                    parameters.Add("starttimestamp", starttimestamp);
+                    parameters.Add("summary", summary);
+                    parameters.Add("md5", ComputeHashString(text));
+                    parameters.Add("maxlag", MaxLag.ToString());
+
+                    MakeRequest(Action.Edit, parameters);
+                    break;
+                }
+                catch (WebException)
+                {
+                    continue;
+                }
             }
-            parameters.Add("token", editToken);
-            if (minor != MinorFlags.None)
-            {
-                parameters.Add(minor.ToString().ToLower());
-            }
-            if (create != CreateFlags.None)
-            {
-                parameters.Add(create.ToString().ToLower());
-            }
-            if (watch != WatchFlags.None)
-            {
-                parameters.Add(watch.ToString().ToLower());
-            }
-            if (mode == SaveFlags.Append)
-            {
-                parameters.Add("appendtext", text);
-            }
-            else if (mode == SaveFlags.Prepend)
-            {
-                parameters.Add("prependtext", text);
-            }
-            else
-            {
-                parameters.Add("text", text);
-            }
-            if (_isBot)
-            {
-                parameters.Add("bot");
-            }
-            parameters.Add("basetimestamp", baseTimeStamp);
-            parameters.Add("starttimestamp", starttimestamp);
-            parameters.Add("summary", summary);
-            parameters.Add("md5", ComputeHashString(text));
-            parameters.Add("maxlag", MaxLag.ToString());
-            
-            MakeRequest(Action.Edit, parameters);
         }
 
         public void MovePage(string fromTitle, string toTitle, string reason,
