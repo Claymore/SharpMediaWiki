@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.30729</ProductVersion>
+    <ProductVersion>9.0.21022</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{1266F599-F539-4645-B623-CFB2424A62E0}</ProjectGuid>
     <OutputType>Library</OutputType>
@@ -53,6 +53,8 @@
     <Compile Include="Wiki.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="WikiException.cs" />
+    <Compile Include="WikiPage.cs" />
+    <Compile Include="WikiPageSection.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="License.txt" />
