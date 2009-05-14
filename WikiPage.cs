@@ -39,11 +39,20 @@ namespace Claymore.SharpMediaWiki
             Regex sectionRE = new Regex(@"^(={2,6})([^=].*?)(={2,6})\s*$");
             int level = 0;
             string sectionTitle = "";
+            bool comment = false;
             bool found = false;
             foreach (string line in lines)
             {
                 Match m = sectionRE.Match(line);
-                if (m.Success)
+                if (line.Contains("<!--"))
+                {
+                    comment = true;
+                }
+                if (comment && line.Contains("-->"))
+                {
+                    comment = false;
+                }
+                if (!comment && m.Success)
                 {
                     if (found)
                     {
