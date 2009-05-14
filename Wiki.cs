@@ -163,9 +163,9 @@ namespace Claymore.SharpMediaWiki
             return null;
         }
 
-        public void SavePage(string title, string text, string comment)
+        public string SavePage(string title, string text, string comment)
         {
-            SavePage(title, "", text, comment,
+            return SavePage(title, "", text, comment,
                 MinorFlags.Minor, CreateFlags.NoCreate, WatchFlags.None, SaveFlags.Replace);
         }
 
@@ -183,6 +183,74 @@ namespace Claymore.SharpMediaWiki
                 watch, SaveFlags.Prepend);
         }
 
+        public string SavePage(string title, string section, string text, string summary,
+            MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode,
+            string basetimestamp, string starttimestamp, string editToken)
+        {
+            for (int tries = 0; tries < 3; ++tries)
+            {
+                try
+                {
+                    ParameterCollection parameters = new ParameterCollection();
+                    parameters.Add("title", title);
+                    if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
+                    {
+                        parameters.Add("section", section);
+                    }
+                    parameters.Add("token", editToken);
+                    if (minor != MinorFlags.None)
+                    {
+                        parameters.Add(minor.ToString().ToLower());
+                    }
+                    if (create != CreateFlags.None)
+                    {
+                        parameters.Add(create.ToString().ToLower());
+                    }
+                    if (watch != WatchFlags.None)
+                    {
+                        parameters.Add(watch.ToString().ToLower());
+                    }
+                    if (mode == SaveFlags.Append)
+                    {
+                        parameters.Add("appendtext", text);
+                    }
+                    else if (mode == SaveFlags.Prepend)
+                    {
+                        parameters.Add("prependtext", text);
+                    }
+                    else
+                    {
+                        parameters.Add("text", text);
+                    }
+                    if (_isBot)
+                    {
+                        parameters.Add("bot");
+                    }
+                    if (!string.IsNullOrEmpty(basetimestamp))
+                    {
+                        parameters.Add("basetimestamp", basetimestamp);
+                    }
+                    parameters.Add("starttimestamp", starttimestamp);
+                    parameters.Add("summary", summary);
+                    //parameters.Add("md5", ComputeHashString(text));
+                    parameters.Add("maxlag", MaxLag.ToString());
+
+                    XmlDocument doc = MakeRequest(Action.Edit, parameters);
+                    XmlNode node = doc.SelectSingleNode("//edit[@newrevid]");
+                    if (node != null)
+                    {
+                        return node.Attributes["newrevid"].Value;
+                    }
+                    break;
+                }
+                catch (WebException)
+                {
+                    continue;
+                }
+            }
+            return null;
+        }
+
         /// <summary>
         /// Saves or creates a page or a page section.
         /// </summary>
@@ -194,7 +262,7 @@ namespace Claymore.SharpMediaWiki
         /// <param name="create">Create flag.</param>
         /// <param name="watch">Watch flag.</param>
         /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages"/></remarks>
-        public void SavePage(string title, string section, string text, string summary,
+        public string SavePage(string title, string section, string text, string summary,
             MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode)
         {
             for (int tries = 0; tries < 3; ++tries)
@@ -216,7 +284,11 @@ namespace Claymore.SharpMediaWiki
                     }
                     string realTitle = node.Attributes["title"].Value;
                     node = doc.SelectSingleNode("/api/query/pages/page/revisions/rev");
-                    string baseTimeStamp = node.Attributes["timestamp"].Value;
+                    string baseTimeStamp = null;
+                    if (node != null && node.Attributes["timestamp"] != null)
+                    {
+                        baseTimeStamp = node.Attributes["timestamp"].Value;
+                    }
                     string starttimestamp = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
 
                     parameters.Clear();
@@ -254,13 +326,21 @@ namespace Claymore.SharpMediaWiki
                     {
                         parameters.Add("bot");
                     }
-                    parameters.Add("basetimestamp", baseTimeStamp);
+                    if (!string.IsNullOrEmpty(baseTimeStamp))
+                    {
+                        parameters.Add("basetimestamp", baseTimeStamp);
+                    }
                     parameters.Add("starttimestamp", starttimestamp);
                     parameters.Add("summary", summary);
-                    parameters.Add("md5", ComputeHashString(text));
+                    //parameters.Add("md5", ComputeHashString(text));
                     parameters.Add("maxlag", MaxLag.ToString());
 
-                    MakeRequest(Action.Edit, parameters);
+                    doc = MakeRequest(Action.Edit, parameters);
+                    node = doc.SelectSingleNode("//edit[@newrevid]");
+                    if (node != null)
+                    {
+                        return node.Attributes["newrevid"].Value;
+                    }
                     break;
                 }
                 catch (WebException)
@@ -268,6 +348,7 @@ namespace Claymore.SharpMediaWiki
                     continue;
                 }
             }
+            return null;
         }
 
         public void MovePage(string fromTitle, string toTitle, string reason,
