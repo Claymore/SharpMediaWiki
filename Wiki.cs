@@ -62,6 +62,11 @@ namespace Claymore.SharpMediaWiki
             set { _sleepBetweenQueries = value * 1000; }
         }
 
+        public Uri Uri
+        {
+            get { return _uri; }
+        }
+
         /// <summary>
         /// Logs into the Wiki as 'user' with 'password'.
         /// </summary>
