@@ -424,6 +424,37 @@ namespace Claymore.SharpMediaWiki
             return result;
         }
 
+        private void Enumerate(ParameterCollection parameters, XmlDocument result)
+        {
+            string query = PrepareQuery(Action.Query, parameters);
+            Parameter parameter = null;
+
+            while (true)
+            {
+                for (int tries = 0; tries < 3; ++tries)
+                {
+                    try
+                    {
+                        parameter = FillDocumentWithQueryResults(query, result);
+                        break;
+                    }
+                    catch (WebException)
+                    {
+                        continue;
+                    }
+                }
+                if (parameter == null)
+                {
+                    break;
+                }
+                string limitName = parameter.Name.Substring(0, 2) + "limit";
+                ParameterCollection localParameters = new ParameterCollection(parameters);
+                localParameters.Set(parameter.Name, parameter.Value);
+                localParameters.Set(limitName, "max");
+                query = PrepareQuery(Action.Query, localParameters);
+            }
+        }
+
         public XmlDocument Query(QueryBy queryBy,
             ParameterCollection parameters,
             IEnumerable<string> ids)
@@ -465,7 +496,8 @@ namespace Claymore.SharpMediaWiki
                     ParameterCollection localParameters = new ParameterCollection(parameters);
                     localParameters.Add(keyword, idsString.ToString());
                     string query = PrepareQuery(Action.Query, localParameters);
-                    FillDocumentWithQueryResults(query, document);
+                    Enumerate(localParameters, document);
+                    //FillDocumentWithQueryResults(query, document);
 
                     index = 1;
                     idsString = new StringBuilder("|" + id);
@@ -477,7 +509,8 @@ namespace Claymore.SharpMediaWiki
                 ParameterCollection localParameters = new ParameterCollection(parameters);
                 localParameters.Add(keyword, idsString.ToString());
                 string query = PrepareQuery(Action.Query, localParameters);
-                FillDocumentWithQueryResults(query, document);
+                //FillDocumentWithQueryResults(query, document);
+                Enumerate(localParameters, document);
             }
             return document;
         }
@@ -606,7 +639,7 @@ namespace Claymore.SharpMediaWiki
             if (!document.HasChildNodes)
             {
                 document.LoadXml(xml);
-                XmlNode n = document.SelectSingleNode("/api/query-continue");
+                XmlNode n = document.SelectSingleNode("//query-continue");
                 if (n != null)
                 {
                     string name = n.FirstChild.Attributes[0].Name;

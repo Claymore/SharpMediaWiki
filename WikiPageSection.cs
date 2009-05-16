@@ -33,6 +33,11 @@ namespace Claymore.SharpMediaWiki
             set { _title = value; }
         }
 
+        public string SectionText
+        {
+            get { return _text; }
+        }
+
         public IList<WikiPageSection> Subsections
         {
             get { return _subSections; }
