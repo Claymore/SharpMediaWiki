@@ -7,7 +7,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Xml;
-using System.Web;
 
 namespace Claymore.SharpMediaWiki
 {
@@ -76,6 +75,10 @@ namespace Claymore.SharpMediaWiki
         /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Login"/></remarks>
         public void Login(string user, string password)
         {
+            if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password))
+            {
+                throw new ArgumentException();
+            }
             if (_cookies != null && _cookies.Count > 0 && user == _username)
             {
                 return;
@@ -84,25 +87,28 @@ namespace Claymore.SharpMediaWiki
             parameters.Add("lgname", user);
             parameters.Add("lgpassword", password);
 
-            MakeRequest(Action.Login, parameters);
-            _username = user;
-
-            parameters.Clear();
-            parameters.Add("meta", "userinfo");
-            parameters.Add("uiprop", "rights");
-
-            XmlDocument doc = MakeRequest(Action.Query, parameters);
-            XmlNodeList nodes = doc.SelectNodes("/api/query/userinfo/rights/r");
-            foreach (XmlNode node in nodes)
+            try
             {
-                if (node.FirstChild.Value == "apihighlimits")
+                XmlDocument xml = MakeRequest(Action.Login, parameters);
+                XmlNode result = xml.SelectSingleNode("//login");
+                if (result.Attributes["result"].Value != "Success")
                 {
-                    _highLimits = true;
+                    throw new LoginException("Login failed, server returned " +
+                        result.Attributes["result"].Value);
                 }
-                else if (node.FirstChild.Value == "bot")
-                {
-                    _isBot = true;
-                }
+                _username = user;
+
+                parameters.Clear();
+                parameters.Add("meta", "userinfo");
+                parameters.Add("uiprop", "rights");
+
+                XmlDocument doc = MakeRequest(Action.Query, parameters);
+                _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
+                _isBot = doc.SelectSingleNode("//rights[r=\"bot\"]/r") != null;
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Login failed", e);
             }
         }
 
@@ -114,15 +120,22 @@ namespace Claymore.SharpMediaWiki
         /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Logout"/></remarks>
         public void Logout()
         {
-            HttpWebRequest request = PrepareRequest();
-            using (StreamWriter sw = new StreamWriter(request.GetRequestStream()))
+            try
             {
-                sw.Write("action=logout");
+                HttpWebRequest request = PrepareRequest();
+                using (StreamWriter sw = new StreamWriter(request.GetRequestStream()))
+                {
+                    sw.Write("action=logout");
+                }
+                WebResponse response = request.GetResponse();
+                response.Close();
+                _username = "";
+                _cookies = null;
             }
-            WebResponse response = request.GetResponse();
-            response.Close();
-            _username = "";
-            _cookies = null;
+            catch (WebException e)
+            {
+                throw new WikiException("Logout failed", e);
+            }
         }
 
         /// <summary>
@@ -132,6 +145,10 @@ namespace Claymore.SharpMediaWiki
         /// <returns>A System.String that contains raw text of the page.</returns>
         public string LoadPage(string title)
         {
+            if (string.IsNullOrEmpty(title))
+            {
+                throw new ArgumentException();
+            }
             TimeSpan diff = DateTime.Now - _lastQueryTime;
             if (diff.Milliseconds < _sleepBetweenQueries)
             {
@@ -142,30 +159,30 @@ namespace Claymore.SharpMediaWiki
             ub.Path = "/w/index.php";
             ub.Query = string.Format("title={0}&redirect=no&action=raw&ctype=text/plain&dontcountme=1",
                     Uri.EscapeDataString(title));
-            for (int tries = 0; tries < 3; ++tries)
+            try
             {
-                try
-                {
-                    HttpWebRequest request = PrepareRequest(ub.Uri, "GET");
-                    WebResponse response = request.GetResponse();
-                    using (StreamReader sr =
-                        new StreamReader(response.GetResponseStream()))
-                    {
-                        _lastQueryTime = DateTime.Now;
-                        return sr.ReadToEnd();
-                    }
-                }
-                catch (WebException e)
+                HttpWebRequest request = PrepareRequest(ub.Uri, "GET");
+                WebResponse response = request.GetResponse();
+                using (StreamReader sr =
+                    new StreamReader(response.GetResponseStream()))
                 {
                     _lastQueryTime = DateTime.Now;
-                    if (e.Status == WebExceptionStatus.ProtocolError &&
-                        e.Message.Contains("(404)"))
-                    {
-                        throw new WikiPageNotFound(title + " not found", e);
-                    }
+                    return sr.ReadToEnd();
                 }
             }
-            return null;
+            catch (WebException e)
+            {
+                _lastQueryTime = DateTime.Now;
+                if (e.Status == WebExceptionStatus.ProtocolError &&
+                    e.Message.Contains("(404)"))
+                {
+                    throw new WikiPageNotFound(title + " not found", e);
+                }
+                else
+                {
+                    throw new WikiException("Failed to load page " + title, e);
+                }
+            }
         }
 
         public string SavePage(string title, string text, string comment)
@@ -192,68 +209,67 @@ namespace Claymore.SharpMediaWiki
             MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode,
             string basetimestamp, string starttimestamp, string editToken)
         {
-            for (int tries = 0; tries < 3; ++tries)
+            try
             {
-                try
+                ParameterCollection parameters = new ParameterCollection();
+                parameters.Add("title", title);
+                if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
                 {
-                    ParameterCollection parameters = new ParameterCollection();
-                    parameters.Add("title", title);
-                    if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
-                    {
-                        parameters.Add("section", section);
-                    }
-                    parameters.Add("token", editToken);
-                    if (minor != MinorFlags.None)
-                    {
-                        parameters.Add(minor.ToString().ToLower());
-                    }
-                    if (create != CreateFlags.None)
-                    {
-                        parameters.Add(create.ToString().ToLower());
-                    }
-                    if (watch != WatchFlags.None)
-                    {
-                        parameters.Add(watch.ToString().ToLower());
-                    }
-                    if (mode == SaveFlags.Append)
-                    {
-                        parameters.Add("appendtext", text);
-                    }
-                    else if (mode == SaveFlags.Prepend)
-                    {
-                        parameters.Add("prependtext", text);
-                    }
-                    else
-                    {
-                        parameters.Add("text", text);
-                    }
-                    if (_isBot)
-                    {
-                        parameters.Add("bot");
-                    }
-                    if (!string.IsNullOrEmpty(basetimestamp))
-                    {
-                        parameters.Add("basetimestamp", basetimestamp);
-                    }
-                    parameters.Add("starttimestamp", starttimestamp);
-                    parameters.Add("summary", summary);
-                    //parameters.Add("md5", ComputeHashString(text));
-                    parameters.Add("maxlag", MaxLag.ToString());
-
-                    XmlDocument doc = MakeRequest(Action.Edit, parameters);
-                    XmlNode node = doc.SelectSingleNode("//edit[@newrevid]");
-                    if (node != null)
-                    {
-                        return node.Attributes["newrevid"].Value;
-                    }
-                    break;
+                    parameters.Add("section", section);
                 }
-                catch (WebException)
+                parameters.Add("token", editToken);
+                if (minor != MinorFlags.None)
                 {
-                    continue;
+                    parameters.Add(minor.ToString().ToLower());
+                }
+                if (create != CreateFlags.None)
+                {
+                    parameters.Add(create.ToString().ToLower());
+                }
+                if (watch != WatchFlags.None)
+                {
+                    parameters.Add(watch.ToString().ToLower());
+                }
+                if (mode == SaveFlags.Append)
+                {
+                    parameters.Add("appendtext", text);
+                }
+                else if (mode == SaveFlags.Prepend)
+                {
+                    parameters.Add("prependtext", text);
+                }
+                else
+                {
+                    parameters.Add("text", text);
+                }
+                if (_isBot)
+                {
+                    parameters.Add("bot");
+                }
+                if (!string.IsNullOrEmpty(basetimestamp))
+                {
+                    parameters.Add("basetimestamp", basetimestamp);
+                }
+                parameters.Add("starttimestamp", starttimestamp);
+                parameters.Add("summary", summary);
+                //parameters.Add("md5", ComputeHashString(text));
+                parameters.Add("maxlag", MaxLag.ToString());
+
+                XmlDocument xml = MakeRequest(Action.Edit, parameters);
+                XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
+                if (result != null)
+                {
+                    return result.Attributes["newrevid"].Value;
+                }
+                else
+                {
+                    return null;
                 }
             }
-            return null;
+            catch (WebException e)
+            {
+                throw new WikiException("Saving failed", e);
+            }
         }
 
         /// <summary>
@@ -270,90 +286,93 @@ namespace Claymore.SharpMediaWiki
         public string SavePage(string title, string section, string text, string summary,
             MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode)
         {
-            for (int tries = 0; tries < 3; ++tries)
+            if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(text))
             {
-                try
+                throw new ArgumentException();
+            }
+            try
+            {
+                ParameterCollection parameters = new ParameterCollection();
+                parameters.Add("prop", "info|revisions");
+                parameters.Add("rvprop", "timestamp");
+                parameters.Add("intoken", "edit");
+                parameters.Add("titles", title);
+
+                XmlDocument doc = MakeRequest(Action.Query, parameters);
+                XmlNode node = doc.SelectSingleNode("//page");
+                if (node.Attributes["edittoken"] == null)
                 {
-                    ParameterCollection parameters = new ParameterCollection();
-                    parameters.Add("prop", "info|revisions");
-                    parameters.Add("rvprop", "timestamp");
-                    parameters.Add("intoken", "edit");
-                    parameters.Add("titles", title);
-
-                    XmlDocument doc = MakeRequest(Action.Query, parameters);
-                    XmlNode node = doc.SelectSingleNode("/api/query/pages/page");
-                    string editToken = "";
-                    if (node.Attributes["edittoken"] != null)
-                    {
-                        editToken = node.Attributes["edittoken"].Value;
-                    }
-                    string realTitle = node.Attributes["title"].Value;
-                    node = doc.SelectSingleNode("/api/query/pages/page/revisions/rev");
-                    string baseTimeStamp = null;
-                    if (node != null && node.Attributes["timestamp"] != null)
-                    {
-                        baseTimeStamp = node.Attributes["timestamp"].Value;
-                    }
-                    string starttimestamp = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
-
-                    parameters.Clear();
-                    parameters.Add("title", realTitle);
-                    if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
-                    {
-                        parameters.Add("section", section);
-                    }
-                    parameters.Add("token", editToken);
-                    if (minor != MinorFlags.None)
-                    {
-                        parameters.Add(minor.ToString().ToLower());
-                    }
-                    if (create != CreateFlags.None)
-                    {
-                        parameters.Add(create.ToString().ToLower());
-                    }
-                    if (watch != WatchFlags.None)
-                    {
-                        parameters.Add(watch.ToString().ToLower());
-                    }
-                    if (mode == SaveFlags.Append)
-                    {
-                        parameters.Add("appendtext", text);
-                    }
-                    else if (mode == SaveFlags.Prepend)
-                    {
-                        parameters.Add("prependtext", text);
-                    }
-                    else
-                    {
-                        parameters.Add("text", text);
-                    }
-                    if (_isBot)
-                    {
-                        parameters.Add("bot");
-                    }
-                    if (!string.IsNullOrEmpty(baseTimeStamp))
-                    {
-                        parameters.Add("basetimestamp", baseTimeStamp);
-                    }
-                    parameters.Add("starttimestamp", starttimestamp);
-                    parameters.Add("summary", summary);
-                    //parameters.Add("md5", ComputeHashString(text));
-                    parameters.Add("maxlag", MaxLag.ToString());
-
-                    doc = MakeRequest(Action.Edit, parameters);
-                    node = doc.SelectSingleNode("//edit[@newrevid]");
-                    if (node != null)
-                    {
-                        return node.Attributes["newrevid"].Value;
-                    }
-                    break;
+                    throw new WikiException("Saving failed: couldn't get edit token");
                 }
-                catch (WebException)
+                string editToken = node.Attributes["edittoken"].Value;
+                string realTitle = node.Attributes["title"].Value;
+                node = doc.SelectSingleNode("//rev");
+                string baseTimeStamp = null;
+                if (node != null && node.Attributes["timestamp"] != null)
                 {
-                    continue;
+                    baseTimeStamp = node.Attributes["timestamp"].Value;
+                }
+                string starttimestamp = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+                parameters.Clear();
+                parameters.Add("title", realTitle);
+                if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
+                {
+                    parameters.Add("section", section);
+                }
+                parameters.Add("token", editToken);
+                if (minor != MinorFlags.None)
+                {
+                    parameters.Add(minor.ToString().ToLower());
+                }
+                if (create != CreateFlags.None)
+                {
+                    parameters.Add(create.ToString().ToLower());
+                }
+                if (watch != WatchFlags.None)
+                {
+                    parameters.Add(watch.ToString().ToLower());
+                }
+                if (mode == SaveFlags.Append)
+                {
+                    parameters.Add("appendtext", text);
+                }
+                else if (mode == SaveFlags.Prepend)
+                {
+                    parameters.Add("prependtext", text);
+                }
+                else
+                {
+                    parameters.Add("text", text);
+                }
+                if (_isBot)
+                {
+                    parameters.Add("bot");
+                }
+                if (!string.IsNullOrEmpty(baseTimeStamp))
+                {
+                    parameters.Add("basetimestamp", baseTimeStamp);
+                }
+                parameters.Add("starttimestamp", starttimestamp);
+                parameters.Add("summary", summary);
+                //parameters.Add("md5", ComputeHashString(text));
+                parameters.Add("maxlag", MaxLag.ToString());
+
+                XmlDocument xml = MakeRequest(Action.Edit, parameters);
+                XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
+                if (result != null)
+                {
+                    return result.Attributes["newrevid"].Value;
+                }
+                else
+                {
+                    return null;
                 }
             }
-            return null;
+            catch (WebException e)
+            {
+                throw new WikiException("Saving failed", e);
+            }
         }
 
         public void MovePage(string fromTitle, string toTitle, string reason,
@@ -399,17 +418,13 @@ namespace Claymore.SharpMediaWiki
 
             while (true)
             {
-                for (int tries = 0; tries < 3; ++tries)
+                try
                 {
-                    try
-                    {
-                        parameter = FillDocumentWithQueryResults(query, result);
-                        break;
-                    }
-                    catch (WebException)
-                    {
-                        continue;
-                    }
+                    parameter = FillDocumentWithQueryResults(query, result);
+                }
+                catch (WebException e)
+                {
+                    throw new WikiException("Enumerating failed", e);
                 }
                 if (parameter == null || !getAll)
                 {
@@ -497,7 +512,6 @@ namespace Claymore.SharpMediaWiki
                     localParameters.Add(keyword, idsString.ToString());
                     string query = PrepareQuery(Action.Query, localParameters);
                     Enumerate(localParameters, document);
-                    //FillDocumentWithQueryResults(query, document);
 
                     index = 1;
                     idsString = new StringBuilder("|" + id);
@@ -509,7 +523,6 @@ namespace Claymore.SharpMediaWiki
                 ParameterCollection localParameters = new ParameterCollection(parameters);
                 localParameters.Add(keyword, idsString.ToString());
                 string query = PrepareQuery(Action.Query, localParameters);
-                //FillDocumentWithQueryResults(query, document);
                 Enumerate(localParameters, document);
             }
             return document;
@@ -520,21 +533,21 @@ namespace Claymore.SharpMediaWiki
             string query = "";
             switch (action)
             {
-            case Action.Login:
-                query = "action=login";
-                break;
-            case Action.Logout:
-                query = "action=logout";
-                break;
-            case Action.Query:
-                query = "action=query";
-                break;
-            case Action.Edit:
-                query = "action=edit";
-                break;
-            case Action.Move:
-                query = "action=move";
-                break;
+                case Action.Login:
+                    query = "action=login";
+                    break;
+                case Action.Logout:
+                    query = "action=logout";
+                    break;
+                case Action.Query:
+                    query = "action=query";
+                    break;
+                case Action.Edit:
+                    query = "action=edit";
+                    break;
+                case Action.Move:
+                    query = "action=move";
+                    break;
             }
             StringBuilder attributes = new StringBuilder();
             foreach (KeyValuePair<string, string> pair in parameters)
@@ -584,7 +597,7 @@ namespace Claymore.SharpMediaWiki
                 }
             }
 
-            XmlNode node = doc.SelectSingleNode("/api/error");
+            XmlNode node = doc.SelectSingleNode("//error");
             if (node != null)
             {
                 string code = node.Attributes["code"].Value;
@@ -606,7 +619,7 @@ namespace Claymore.SharpMediaWiki
             {
                 _cookies = response.Cookies;
             }
-            
+
             if (action == Action.Edit)
             {
                 _lastEditTime = DateTime.Now;
@@ -662,8 +675,8 @@ namespace Claymore.SharpMediaWiki
                         root.AppendChild(importedNode);
                     }
                 }
-                
-                n = doc.SelectSingleNode("/api/query-continue");
+
+                n = doc.SelectSingleNode("//query-continue");
                 if (n != null)
                 {
                     string name = n.FirstChild.Attributes[0].Name;
