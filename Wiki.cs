@@ -72,18 +72,21 @@ namespace Claymore.SharpMediaWiki
         /// </summary>
         /// <param name="username">A username.</param>
         /// <param name="password">A password.</param>
-        /// <returns>A value from Claymore.SharpMediaWiki.LoginResult.</returns>
-        /// <exception cref="Claymore.SharpMediaWiki.WikiException">Thrown when a network error occur.</exception>
+        /// <exception cref="Claymore.SharpMediaWiki.WikiException">Thrown when an error occurs.</exception>
         /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Login"/></remarks>
-        public LoginResult Login(string username, string password)
+        public void Login(string username, string password)
         {
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            if (string.IsNullOrEmpty(username))
             {
-                throw new ArgumentException();
+                throw new ArgumentException("Username shoudln't be empty.", "username");
+            }
+            if (string.IsNullOrEmpty(password))
+            {
+                throw new ArgumentException("Password shoudln't be empty.", "password");
             }
             if (_cookies != null && _cookies.Count > 0 && username == _username)
             {
-                return LoginResult.Success;
+                return;
             }
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("lgname", username);
@@ -92,15 +95,12 @@ namespace Claymore.SharpMediaWiki
             try
             {
                 XmlDocument xml = MakeRequest(Action.Login, parameters);
-                XmlNode result = xml.SelectSingleNode("//login");
-                for (int i = 1; i <= (int)LoginResult.Throttled; ++i)
+                string result = xml.SelectSingleNode("//login").Attributes["result"].Value;
+                if (result != "Success")
                 {
-                    LoginResult r = (LoginResult)i;
-                    if (r.ToString() == result.Attributes["result"].Value)
-                    {
-                        return r;
-                    }
+                    throw new WikiException("Login failed, server returned '" + result + "'.");
                 }
+                
                 _username = username;
 
                 parameters.Clear();
@@ -115,7 +115,6 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new WikiException("Login failed", e);
             }
-            return LoginResult.Success;
         }
 
         /// <summary>
@@ -153,7 +152,7 @@ namespace Claymore.SharpMediaWiki
         {
             if (string.IsNullOrEmpty(title))
             {
-                throw new ArgumentException();
+                throw new ArgumentException("Title shouldn't be empty.", "title");
             }
             TimeSpan diff = DateTime.Now - _lastQueryTime;
             if (diff.Milliseconds < _sleepBetweenQueries)
@@ -292,9 +291,13 @@ namespace Claymore.SharpMediaWiki
         public string SavePage(string title, string section, string text, string summary,
             MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode)
         {
-            if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(title))
             {
-                throw new ArgumentException();
+                throw new ArgumentException("Title shouldn't be empty.", "title");
+            }
+            if (string.IsNullOrEmpty(text))
+            {
+                throw new ArgumentException("Text shouldn't be empty.", "text");
             }
             try
             {
@@ -391,7 +394,7 @@ namespace Claymore.SharpMediaWiki
             parameters.Add("maxlag", MaxLag.ToString());
 
             XmlDocument doc = MakeRequest(Action.Query, parameters);
-            XmlNode node = doc.SelectSingleNode("/api/query/pages/page");
+            XmlNode node = doc.SelectSingleNode("//page");
             string token = "";
             if (node.Attributes["movetoken"] != null)
             {
@@ -452,18 +455,15 @@ namespace Claymore.SharpMediaWiki
 
             while (true)
             {
-                for (int tries = 0; tries < 3; ++tries)
+                try
                 {
-                    try
-                    {
-                        parameter = FillDocumentWithQueryResults(query, result);
-                        break;
-                    }
-                    catch (WebException)
-                    {
-                        continue;
-                    }
+                    parameter = FillDocumentWithQueryResults(query, result);
                 }
+                catch (WebException e)
+                {
+                    throw new WikiException("Query failed.", e);
+                }
+                
                 if (parameter == null)
                 {
                     break;
@@ -901,18 +901,5 @@ namespace Claymore.SharpMediaWiki
         Replace,
         Append,
         Prepend
-    }
-
-    public enum LoginResult
-    {
-        Success = 0,
-        NoName,
-        Illegal,
-        NotExists,
-        EmptyPass,
-        WrongPass,
-        WrongPluginPass,
-        CreateBlocked,
-        Throttled
     }
 }
