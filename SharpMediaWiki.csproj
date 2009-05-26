@@ -9,7 +9,7 @@
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Claymore.SharpMediaWiki</RootNamespace>
-    <AssemblyName>SharpMediaWiki</AssemblyName>
+    <AssemblyName>Claymore.SharpMediaWiki</AssemblyName>
     <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <StartupObject>

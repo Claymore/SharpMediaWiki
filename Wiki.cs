@@ -67,36 +67,40 @@ namespace Claymore.SharpMediaWiki
         }
 
         /// <summary>
-        /// Logs into the Wiki as 'user' with 'password'.
+        /// Logs into the MediaWiki as 'username' using 'password'.
         /// </summary>
-        /// <param name="user">A username on the Wiki.</param>
+        /// <param name="username">A username.</param>
         /// <param name="password">A password.</param>
-        /// <exception cref="Claymore.SharpMediaWiki.LoginException">Thrown when login fails.</exception>
+        /// <returns>A value from Claymore.SharpMediaWiki.LoginResult.</returns>
+        /// <exception cref="Claymore.SharpMediaWiki.WikiException">Thrown when a network error occur.</exception>
         /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Login"/></remarks>
-        public void Login(string user, string password)
+        public LoginResult Login(string username, string password)
         {
-            if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password))
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
                 throw new ArgumentException();
             }
-            if (_cookies != null && _cookies.Count > 0 && user == _username)
+            if (_cookies != null && _cookies.Count > 0 && username == _username)
             {
-                return;
+                return LoginResult.Success;
             }
             ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("lgname", user);
+            parameters.Add("lgname", username);
             parameters.Add("lgpassword", password);
 
             try
             {
                 XmlDocument xml = MakeRequest(Action.Login, parameters);
                 XmlNode result = xml.SelectSingleNode("//login");
-                if (result.Attributes["result"].Value != "Success")
+                for (int i = 1; i <= (int)LoginResult.Throttled; ++i)
                 {
-                    throw new LoginException("Login failed, server returned " +
-                        result.Attributes["result"].Value);
+                    LoginResult r = (LoginResult)i;
+                    if (r.ToString() == result.Attributes["result"].Value)
+                    {
+                        return r;
+                    }
                 }
-                _username = user;
+                _username = username;
 
                 parameters.Clear();
                 parameters.Add("meta", "userinfo");
@@ -110,6 +114,7 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new WikiException("Login failed", e);
             }
+            return LoginResult.Success;
         }
 
         /// <summary>
@@ -831,5 +836,18 @@ namespace Claymore.SharpMediaWiki
         Replace,
         Append,
         Prepend
+    }
+
+    public enum LoginResult
+    {
+        Success = 0,
+        NoName,
+        Illegal,
+        NotExists,
+        EmptyPass,
+        WrongPass,
+        WrongPluginPass,
+        CreateBlocked,
+        Throttled
     }
 }
