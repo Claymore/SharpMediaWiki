@@ -86,4 +86,21 @@ namespace Claymore.SharpMediaWiki
         {
         }
     }
+
+    public class SerializationException : WikiException
+    {
+        public SerializationException()
+        {
+        }
+
+        public SerializationException(string message)
+            : base(message)
+        {
+        }
+
+        public SerializationException(string message, Exception inner)
+            : base(message, inner)
+        {
+        }
+    }
 }

@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Xml;
+using System.IO.Compression;
 
 namespace Claymore.SharpMediaWiki
 {
@@ -690,6 +691,70 @@ namespace Claymore.SharpMediaWiki
                 }
             }
             return null;
+        }
+
+        public byte[] CookiesToArray()
+        {
+            Serializer serializer = new Serializer();
+            serializer.Put(_cookies.Count);
+            for (int i = 0; i < _cookies.Count; ++i)
+            {
+                serializer.Put(_cookies[i].Name);
+                serializer.Put(_cookies[i].Value);
+                serializer.Put(_cookies[i].Path);
+                serializer.Put(_cookies[i].Domain);
+            }
+            return serializer.ToArray();
+        }
+
+        public void CacheCookies()
+        {
+            Directory.CreateDirectory("Cache");
+            string filename = @"Cache\cookie.jar";
+            using (FileStream fs = new FileStream(filename, FileMode.Create))
+            using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))
+            {
+                byte[] data = CookiesToArray();
+                gs.Write(data, 0, data.Length);
+            }
+        }
+
+        public void LoadCookies(byte[] data)
+        {
+            _cookies = new CookieCollection();
+            Deserializer deserializer = new Deserializer(data);
+            int count = deserializer.GetInt();
+            for (int i = 0; i < count; ++i)
+            {
+                string name = deserializer.GetString();
+                string value = deserializer.GetString();
+                string path = deserializer.GetString();
+                string domain = deserializer.GetString();
+                Cookie cookie = new Cookie(name, value, path, domain);
+                _cookies.Add(cookie);
+            }
+        }
+
+        public bool LoadCookies()
+        {
+            string filename = @"Cache\cookie.jar";
+            if (!File.Exists(filename))
+            {
+                return false;
+            }
+            using (FileStream fs = new FileStream(filename, FileMode.Open))
+            using (GZipStream gs = new GZipStream(fs, CompressionMode.Decompress))
+            using (BinaryReader sr = new BinaryReader(gs))
+            {
+                List<byte> data = new List<byte>();
+                int b;
+                while ((b = sr.BaseStream.ReadByte()) != -1)
+                {
+                    data.Add((byte)b);
+                }
+                LoadCookies(data.ToArray());
+            }
+            return true;
         }
 
         private HttpWebRequest PrepareRequest()
