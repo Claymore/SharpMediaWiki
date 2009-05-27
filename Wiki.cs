@@ -67,6 +67,16 @@ namespace Claymore.SharpMediaWiki
             get { return _uri; }
         }
 
+        public bool HighLimits
+        {
+            get { return _highLimits; }
+        }
+
+        public bool IsBot
+        {
+            get { return _isBot; }
+        }
+
         /// <summary>
         /// Logs into the MediaWiki as 'username' using 'password'.
         /// </summary>
@@ -104,6 +114,24 @@ namespace Claymore.SharpMediaWiki
                 _username = username;
 
                 parameters.Clear();
+                parameters.Add("meta", "userinfo");
+                parameters.Add("uiprop", "rights");
+
+                XmlDocument doc = MakeRequest(Action.Query, parameters);
+                _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
+                _isBot = doc.SelectSingleNode("//rights[r=\"bot\"]/r") != null;
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Login failed", e);
+            }
+        }
+
+        public void Login()
+        {
+            try
+            {
+                ParameterCollection parameters = new ParameterCollection();
                 parameters.Add("meta", "userinfo");
                 parameters.Add("uiprop", "rights");
 
@@ -707,16 +735,21 @@ namespace Claymore.SharpMediaWiki
             return serializer.ToArray();
         }
 
-        public void CacheCookies()
+        public void CacheCookies(string fileName)
         {
-            Directory.CreateDirectory("Cache");
-            string filename = @"Cache\cookie.jar";
-            using (FileStream fs = new FileStream(filename, FileMode.Create))
+            using (FileStream fs = new FileStream(fileName, FileMode.Create))
             using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))
             {
                 byte[] data = CookiesToArray();
                 gs.Write(data, 0, data.Length);
             }
+        }
+
+        public void CacheCookies()
+        {
+            Directory.CreateDirectory("Cache");
+            string filename = @"Cache\cookie.jar";
+            CacheCookies(filename);
         }
 
         public void LoadCookies(byte[] data)
@@ -737,12 +770,16 @@ namespace Claymore.SharpMediaWiki
 
         public bool LoadCookies()
         {
-            string filename = @"Cache\cookie.jar";
-            if (!File.Exists(filename))
+            return LoadCookies(@"Cache\cookie.jar");
+        }
+
+        public bool LoadCookies(string fileName)
+        {
+            if (!File.Exists(fileName))
             {
                 return false;
             }
-            using (FileStream fs = new FileStream(filename, FileMode.Open))
+            using (FileStream fs = new FileStream(fileName, FileMode.Open))
             using (GZipStream gs = new GZipStream(fs, CompressionMode.Decompress))
             using (BinaryReader sr = new BinaryReader(gs))
             {
