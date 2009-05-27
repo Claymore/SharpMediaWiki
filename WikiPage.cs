@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -8,8 +9,14 @@ namespace Claymore.SharpMediaWiki
     public class WikiPage
     {
         private string _title;
-        private List<WikiPageSection> _sections;
+        private readonly List<WikiPageSection> _sections;
         private string _text;
+        private static Regex _sectionRE;
+
+        static WikiPage()
+        {
+            _sectionRE = new Regex(@"^(={2,6})([^=].*?)(={2,6})\s*$");
+        }
 
         public WikiPage(string title)
         {
@@ -26,7 +33,7 @@ namespace Claymore.SharpMediaWiki
         {
             get
             {
-                return _text + string.Join("", _sections.ConvertAll(s => s.Text).ToArray());
+                return _text + string.Concat(_sections.ConvertAll(s => s.Text).ToArray());
             }
         }
 
@@ -34,16 +41,16 @@ namespace Claymore.SharpMediaWiki
         {
             WikiPage page = new WikiPage(title);
 
-            string[] lines = text.Split(new char[] { '\n' });
+            StringReader reader = new StringReader(text);
             StringBuilder sectionText = new StringBuilder();
-            Regex sectionRE = new Regex(@"^(={2,6})([^=].*?)(={2,6})\s*$");
             int level = 0;
             string sectionTitle = "";
             bool comment = false;
             bool found = false;
-            foreach (string line in lines)
+            string line;
+            while ((line = reader.ReadLine()) != null)
             {
-                Match m = sectionRE.Match(line);
+                Match m = _sectionRE.Match(line);
                 if (line.Contains("<!--"))
                 {
                     comment = true;
@@ -56,16 +63,20 @@ namespace Claymore.SharpMediaWiki
                 {
                     if (found)
                     {
+                        var section = new WikiPageSection(sectionTitle,
+                            level,
+                            sectionText.ToString());
+
                         int index = page._sections.Count - 1;
                         if (index >= 0 &&
                             index < page._sections.Count &&
                             page._sections[index].Level < level)
                         {
-                            page._sections[index].AddSubsection(new WikiPageSection(sectionTitle, level, sectionText.ToString()));
+                            page._sections[index].AddSubsection(section);
                         }
                         else
                         {
-                            page._sections.Add(new WikiPageSection(sectionTitle, level, sectionText.ToString()));
+                            page._sections.Add(section);
                         }
                         sectionText = new StringBuilder();
                         found = false;
@@ -84,18 +95,23 @@ namespace Claymore.SharpMediaWiki
                     sectionText.Append(line + "\n");
                 }
             }
+            
             if (found)
             {
+                var section = new WikiPageSection(sectionTitle,
+                            level,
+                            sectionText.ToString());
+
                 int index = page._sections.Count - 1;
                 if (index >= 0 &&
                     index < page._sections.Count &&
                     page._sections[index].Level < level)
                 {
-                    page._sections[index].AddSubsection(new WikiPageSection(sectionTitle, level, sectionText.ToString()));
+                    page._sections[index].AddSubsection(section);
                 }
                 else
                 {
-                    page._sections.Add(new WikiPageSection(sectionTitle, level, sectionText.ToString()));
+                    page._sections.Add(section);
                 }
             }
             else

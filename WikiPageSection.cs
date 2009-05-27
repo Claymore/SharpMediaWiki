@@ -4,14 +4,15 @@ namespace Claymore.SharpMediaWiki
 {
     public class WikiPageSection
     {
-        private string _title;
         private int _level;
         private string _text;
         private readonly List<WikiPageSection> _subSections;
 
+        public string Title { get; set; }
+
         public WikiPageSection(string title, int level, string text)
         {
-            _title = title;
+            Title = title;
             _level = level;
             _text = text;
             _subSections = new List<WikiPageSection>();
@@ -20,17 +21,6 @@ namespace Claymore.SharpMediaWiki
         public int Level
         {
             get { return _level; }
-        }
-
-        public override string ToString()
-        {
-            return _title.Trim();
-        }
-
-        public string Title
-        {
-            get { return _title; }
-            set { _title = value; }
         }
 
         public string SectionText
@@ -54,10 +44,15 @@ namespace Claymore.SharpMediaWiki
                 }
                 return string.Format("{0}{1}{0}\n{2}{3}",
                     filler,
-                    _title,
+                    Title,
                     _text,
-                    string.Join("", _subSections.ConvertAll(s => s.Text).ToArray()));
+                    string.Concat(_subSections.ConvertAll(s => s.Text).ToArray()));
             }
+        }
+
+        public override string ToString()
+        {
+            return Title.Trim();
         }
 
         public void AddSubsection(WikiPageSection section)
