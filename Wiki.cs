@@ -24,6 +24,8 @@ namespace Claymore.SharpMediaWiki
         private bool _isBot;
         private int _sleepBetweenEdits;
         private int _sleepBetweenQueries;
+        private Dictionary<string, int> _namespaces;
+        private static readonly bool _isRunningOnMono = (Type.GetType("Mono.Runtime") != null);
 
         /// <summary>
         /// Initializes a new instance of the Wiki class with the specified URI.
@@ -44,6 +46,7 @@ namespace Claymore.SharpMediaWiki
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             _userAgent = string.Format("SharpMediaWiki/{0}.{1}",
                 version.Major, version.Minor);
+            _namespaces = new Dictionary<string, int>();
         }
 
         public int MaxLag
@@ -197,7 +200,7 @@ namespace Claymore.SharpMediaWiki
                 HttpWebRequest request = PrepareRequest(ub.Uri, "GET");
                 WebResponse response = request.GetResponse();
                 using (StreamReader sr =
-                    new StreamReader(response.GetResponseStream()))
+                    new StreamReader(GetResponseStream((HttpWebResponse)response)))
                 {
                     _lastQueryTime = DateTime.Now;
                     return sr.ReadToEnd();
@@ -562,6 +565,76 @@ namespace Claymore.SharpMediaWiki
             return document;
         }
 
+        public int PageNamespace(string title)
+        {
+            foreach (var pair in _namespaces)
+            {
+                if (title.StartsWith(pair.Key + ":"))
+                {
+                    return pair.Value;
+                }
+            }
+            return 0;
+        }
+
+        public void GetNamespaces()
+        {
+            _namespaces.Clear();
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("meta", "siteinfo");
+            parameters.Add("siprop", "namespaces");
+            XmlDocument xml = Enumerate(parameters, true);
+            XmlNodeList nodes = xml.SelectNodes("//ns[@id > 0]");
+            foreach (XmlNode node in nodes)
+            {
+                _namespaces.Add(node.FirstChild.Value, int.Parse(node.Attributes["id"].Value));
+            }
+        }
+
+        public bool LoadNamespaces()
+        {
+            return LoadNamespaces(@"Cache\namespaces.dat");
+        }
+
+        public void SaveNamespaces()
+        {
+            SaveNamespaces(@"Cache\namespaces.dat");
+        }
+
+        public bool LoadNamespaces(string filename)
+        {
+            if (!File.Exists(filename))
+            {
+                return false;
+            }
+            _namespaces.Clear();
+            Deserializer deserializer = new Deserializer(File.ReadAllBytes(filename));
+            int count = deserializer.GetInt();
+            for (int i = 0; i < count; ++i)
+            {
+                string ns = deserializer.GetString();
+                int number = deserializer.GetInt();
+                _namespaces.Add(ns, number);
+            }
+            return true;
+        }
+
+        public void SaveNamespaces(string filename)
+        {
+            Serializer serializer = new Serializer();
+            serializer.Put(_namespaces.Count);
+            foreach (var pair in _namespaces)
+            {
+                serializer.Put(pair.Key);
+                serializer.Put(pair.Value);
+            }
+            using (FileStream fs = new FileStream(filename, FileMode.CreateNew))
+            using (BinaryWriter streamWriter = new BinaryWriter(fs))
+            {
+                streamWriter.Write(serializer.ToArray());
+            }
+        }
+
         private string PrepareQuery(Action action, ParameterCollection parameters)
         {
             string query = "";
@@ -623,7 +696,7 @@ namespace Claymore.SharpMediaWiki
                 else
                 {
                     using (StreamReader sr =
-                        new StreamReader(response.GetResponseStream()))
+                        new StreamReader(GetResponseStream((HttpWebResponse)response)))
                     {
                         doc.LoadXml(sr.ReadToEnd());
                     }
@@ -678,7 +751,7 @@ namespace Claymore.SharpMediaWiki
             }
             WebResponse response = request.GetResponse();
             using (StreamReader sr =
-                new StreamReader(response.GetResponseStream()))
+                new StreamReader(GetResponseStream((HttpWebResponse)response)))
             {
                 xml = sr.ReadToEnd();
                 _lastQueryTime = DateTime.Now;
@@ -719,6 +792,23 @@ namespace Claymore.SharpMediaWiki
                 }
             }
             return null;
+        }
+
+        private static Stream GetResponseStream(HttpWebResponse response)
+        {
+            if (!_isRunningOnMono)
+            {
+                return response.GetResponseStream();
+            }
+            if (response.ContentEncoding.ToLower().Contains("gzip"))
+            {
+                return new GZipStream(response.GetResponseStream(), CompressionMode.Decompress);
+            }
+            else if (response.ContentEncoding.ToLower().Contains("deflate"))
+            {
+                return new DeflateStream(response.GetResponseStream(), CompressionMode.Decompress);
+            }
+            return response.GetResponseStream();
         }
 
         public byte[] CookiesToArray()
@@ -810,8 +900,15 @@ namespace Claymore.SharpMediaWiki
             {
                 request.ContentType = "application/x-www-form-urlencoded";
             }
-            request.AutomaticDecompression = DecompressionMethods.GZip |
-                DecompressionMethods.Deflate;
+            if (!_isRunningOnMono)
+            {
+                request.AutomaticDecompression = DecompressionMethods.GZip |
+                    DecompressionMethods.Deflate;
+            }
+            else
+            {
+                request.Headers.Add(HttpRequestHeader.AcceptEncoding, "gzip,deflate");
+            }
             request.ProtocolVersion = HttpVersion.Version10;
             request.UserAgent = _userAgent;
             request.CookieContainer = new CookieContainer();
