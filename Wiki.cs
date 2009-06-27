@@ -990,6 +990,18 @@ namespace Claymore.SharpMediaWiki
                 get { return _name; }
             }
         }
+
+        public string GetNamespace(int number)
+        {
+            foreach (var item in _namespaces)
+            {
+                if (item.Value == number)
+                {
+                    return item.Key;
+                }
+            }
+            return null;
+        }
     }
 
     public enum Action
