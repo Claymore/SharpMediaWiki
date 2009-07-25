@@ -776,6 +776,10 @@ namespace Claymore.SharpMediaWiki
                 foreach (XmlNode node in n.ChildNodes)
                 {
                     XmlNode root = document.SelectSingleNode("/api/query/" + node.Name);
+                    if (root == null)
+                    {
+                        continue;
+                    }
                     foreach (XmlNode childNode in node.ChildNodes)
                     {
                         XmlNode importedNode = document.ImportNode(childNode, true);
