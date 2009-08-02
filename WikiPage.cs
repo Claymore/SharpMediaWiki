@@ -24,7 +24,7 @@ namespace Claymore.SharpMediaWiki
             _sections = new List<WikiPageSection>();
         }
 
-        public IList<WikiPageSection> Sections
+        public List<WikiPageSection> Sections
         {
             get { return _sections; }
         }
