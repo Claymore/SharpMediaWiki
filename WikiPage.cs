@@ -45,6 +45,7 @@ namespace Claymore.SharpMediaWiki
             StringBuilder sectionText = new StringBuilder();
             int level = 0;
             string sectionTitle = "";
+            string rawSectionTitle = "";
             bool comment = false;
             bool found = false;
             string line;
@@ -64,6 +65,7 @@ namespace Claymore.SharpMediaWiki
                     if (found)
                     {
                         var section = new WikiPageSection(sectionTitle,
+                            rawSectionTitle,
                             level,
                             sectionText.ToString());
 
@@ -89,6 +91,7 @@ namespace Claymore.SharpMediaWiki
                     found = true;
                     level = Math.Min(m.Groups[1].Length, m.Groups[3].Length);
                     sectionTitle = m.Groups[2].Value;
+                    rawSectionTitle = line;
                 }
                 else
                 {
@@ -99,6 +102,7 @@ namespace Claymore.SharpMediaWiki
             if (found)
             {
                 var section = new WikiPageSection(sectionTitle,
+                            rawSectionTitle,
                             level,
                             sectionText.ToString());
 

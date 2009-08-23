@@ -4,23 +4,46 @@ namespace Claymore.SharpMediaWiki
 {
     public class WikiPageSection
     {
-        private int _level;
         private string _text;
         private readonly List<WikiPageSection> _subSections;
+        private string _rawTitle;
+        private string _title;
 
-        public string Title { get; set; }
+        public string Title
+        {
+            get
+            {
+                return _title;
+            }
+            set
+            {
+                string filler = "";
+                for (int i = 0; i < Level; ++i)
+                {
+                    filler += "=";
+                }
+                _title = value;
+                _rawTitle = filler + Title + filler;
+            }
+        }
+
+        public int Level { get; private set; }
 
         public WikiPageSection(string title, int level, string text)
         {
-            Title = title;
-            _level = level;
+            Level = level;
             _text = text;
+            Title = title;
             _subSections = new List<WikiPageSection>();
         }
 
-        public int Level
+        public WikiPageSection(string title, string rawTitle, int level, string text)
         {
-            get { return _level; }
+            _rawTitle = rawTitle;
+            _title = title;
+            Level = level;
+            _text = text;
+            _subSections = new List<WikiPageSection>();
         }
 
         public string SectionText
@@ -37,14 +60,8 @@ namespace Claymore.SharpMediaWiki
         {
             get
             {
-                string filler = "";
-                for (int i = 0; i < _level; ++i)
-                {
-                    filler += "=";
-                }
-                return string.Format("{0}{1}{0}\n{2}{3}",
-                    filler,
-                    Title,
+                return string.Format("{0}\n{1}{2}",
+                    _rawTitle,
                     _text,
                     string.Concat(_subSections.ConvertAll(s => s.Text).ToArray()));
             }

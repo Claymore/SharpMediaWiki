@@ -286,7 +286,10 @@ namespace Claymore.SharpMediaWiki
                 {
                     parameters.Add("basetimestamp", basetimestamp);
                 }
-                parameters.Add("starttimestamp", starttimestamp);
+                if (!string.IsNullOrEmpty(starttimestamp))
+                {
+                    parameters.Add("starttimestamp", starttimestamp);
+                }
                 parameters.Add("summary", summary);
                 //parameters.Add("md5", ComputeHashString(text));
                 parameters.Add("maxlag", MaxLag.ToString());
@@ -352,7 +355,6 @@ namespace Claymore.SharpMediaWiki
                 {
                     baseTimeStamp = node.Attributes["timestamp"].Value;
                 }
-                string starttimestamp = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
 
                 parameters.Clear();
                 parameters.Add("title", realTitle);
@@ -393,7 +395,6 @@ namespace Claymore.SharpMediaWiki
                 {
                     parameters.Add("basetimestamp", baseTimeStamp);
                 }
-                parameters.Add("starttimestamp", starttimestamp);
                 parameters.Add("summary", summary);
                 //parameters.Add("md5", ComputeHashString(text));
                 parameters.Add("maxlag", MaxLag.ToString());
