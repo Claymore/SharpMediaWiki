@@ -451,6 +451,21 @@ namespace Claymore.SharpMediaWiki
             MakeRequest(Action.Move, parameters);
         }
 
+        public void ReviewPage(string revisionId, string accuracy, string comment,
+            string editToken)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("revid", revisionId);
+            parameters.Add("token", editToken);
+            parameters.Add("flag_accuracy", accuracy);
+            if (!string.IsNullOrEmpty(comment))
+            {
+                parameters.Add("comment", comment);
+            }
+
+            XmlDocument doc = MakeRequest(Action.Review, parameters);
+        }
+
         public XmlDocument Enumerate(ParameterCollection parameters, bool getAll)
         {
             XmlDocument result = new XmlDocument();
@@ -655,6 +670,9 @@ namespace Claymore.SharpMediaWiki
                     break;
                 case Action.Move:
                     query = "action=move";
+                    break;
+                case Action.Review:
+                    query = "action=review";
                     break;
             }
             StringBuilder attributes = new StringBuilder();
@@ -1007,6 +1025,58 @@ namespace Claymore.SharpMediaWiki
             }
             return null;
         }
+
+        public void StabilizePage(string name, string reason, string editToken)
+        {
+            TimeSpan diff = DateTime.Now - _lastQueryTime;
+            if (diff.Milliseconds < _sleepBetweenQueries)
+            {
+                Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
+            }
+
+            UriBuilder ub = new UriBuilder(_uri);
+            ub.Path = "/wiki/Служебная:Stabilization";
+            
+            HttpWebRequest request = PrepareRequest(ub.Uri, "POST");
+            ParameterCollection parameters = new ParameterCollection();
+
+            parameters.Add("wpEditToken", editToken);
+            parameters.Add("page", name);
+            parameters.Add("title", "Служебная:Stabilization");
+            parameters.Add("wpWatchthis", "0");
+            parameters.Add("wpReviewthis", "0");
+            parameters.Add("wpReason", reason);
+            parameters.Add("wpReasonSelection", "other");
+            parameters.Add("mwStabilize-expiry", "infinite");
+            parameters.Add("wpExpirySelection", "infinite");
+            parameters.Add("wpStableconfig-select", "1");
+            parameters.Add("wpStableconfig-override", "1");
+
+            StringBuilder attributes = new StringBuilder();
+            foreach (KeyValuePair<string, string> pair in parameters)
+            {
+                if (pair.Key == "format")
+                {
+                    continue;
+                }
+                attributes.Append(string.Format("&{0}={1}",
+                    pair.Key,
+                    EscapeString(pair.Value)));
+            }
+            string query = attributes.ToString().Remove(0, 1);
+            using (StreamWriter sw =
+                new StreamWriter(request.GetRequestStream()))
+            {
+                sw.Write(query);
+            }
+            WebResponse response = request.GetResponse();
+            using (StreamReader sr =
+                new StreamReader(GetResponseStream((HttpWebResponse)response)))
+            {
+                string result = sr.ReadToEnd();
+                _lastQueryTime = DateTime.Now;
+            }
+        }
     }
 
     public enum Action
@@ -1015,7 +1085,8 @@ namespace Claymore.SharpMediaWiki
         Logout,
         Edit,
         Move,
-        Query
+        Query,
+        Review
     }
 
     public enum CreateFlags
