@@ -581,6 +581,33 @@ namespace Claymore.SharpMediaWiki
             return document;
         }
 
+        public void DeletePage(string title, string reason)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("prop", "info");
+            parameters.Add("intoken", "edit");
+            parameters.Add("titles", title);
+
+            XmlDocument doc = MakeRequest(Action.Query, parameters);
+            XmlNode node = doc.SelectSingleNode("//page");
+            if (node.Attributes["edittoken"] == null)
+            {
+                throw new WikiException("DeletePage failed: couldn't get edit token");
+            }
+            string editToken = node.Attributes["edittoken"].Value;
+
+            DeletePage(title, reason, editToken);
+        }
+
+        public void DeletePage(string title, string reason, string editToken)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("title", title);
+            parameters.Add("token", editToken);
+            parameters.Add("reason", reason);
+            MakeRequest(Action.Delete, parameters);
+        }
+
         public int PageNamespace(string title)
         {
             foreach (var pair in _namespaces)
@@ -673,6 +700,9 @@ namespace Claymore.SharpMediaWiki
                     break;
                 case Action.Review:
                     query = "action=review";
+                    break;
+                case Action.Delete:
+                    query = "action=delete";
                     break;
             }
             StringBuilder attributes = new StringBuilder();
@@ -1086,7 +1116,8 @@ namespace Claymore.SharpMediaWiki
         Edit,
         Move,
         Query,
-        Review
+        Review,
+        Delete
     }
 
     public enum CreateFlags
