@@ -13,6 +13,9 @@ namespace Claymore.SharpMediaWiki
         private string _text;
         private static Regex _sectionRE;
 
+        public string BaseTimestamp { get; set; }
+        public string Token { get; set; }
+
         static WikiPage()
         {
             _sectionRE = new Regex(@"^(={2,6})([^=].*?)(={2,6})\s*$");
