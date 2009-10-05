@@ -49,6 +49,7 @@ namespace Claymore.SharpMediaWiki
         public string SectionText
         {
             get { return _text; }
+            set { _text = value; }
         }
 
         public IList<WikiPageSection> Subsections
