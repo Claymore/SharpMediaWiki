@@ -221,6 +221,39 @@ namespace Claymore.SharpMediaWiki
             }
         }
 
+        public WikiPage LoadPageEx(string title)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("prop", "info|revisions");
+            parameters.Add("intoken", "edit");
+            parameters.Add("rvprop", "timestamp|content|ids");
+            XmlDocument xml = Query(QueryBy.Titles, parameters, new string[] { title });
+            XmlNode node = xml.SelectSingleNode("//rev");
+            string baseTimeStamp = null;
+            string text = "";
+            string revid = "";
+            if (node != null && node.Attributes["timestamp"] != null)
+            {
+                baseTimeStamp = node.Attributes["timestamp"].Value;
+            }
+            if (node != null && node.Attributes["content"] != null)
+            {
+                text = node.Attributes["content"].Value;
+            }
+            if (node != null && node.Attributes["id"] != null)
+            {
+                revid = node.Attributes["id"].Value;
+            }
+            node = xml.SelectSingleNode("//page");
+            string editToken = node.Attributes["edittoken"].Value;
+
+            WikiPage page = WikiPage.Parse(title, text);
+            page.BaseTimestamp = baseTimeStamp;
+            page.Token = editToken;
+            page.LastRevisionId = revid;
+            return page;
+        }
+
         public string SavePage(string title, string text, string comment)
         {
             return SavePage(title, "", text, comment,
@@ -704,6 +737,9 @@ namespace Claymore.SharpMediaWiki
                 case Action.Delete:
                     query = "action=delete";
                     break;
+                case Action.Protect:
+                    query = "action=protect";
+                    break;
             }
             StringBuilder attributes = new StringBuilder();
             foreach (KeyValuePair<string, string> pair in parameters)
@@ -1056,6 +1092,17 @@ namespace Claymore.SharpMediaWiki
             return null;
         }
 
+        public void ProtectPage(string title, string protection, string expiry, string reason, string token)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("title", title);
+            parameters.Add("token", token);
+            parameters.Add("protections", protection);
+            parameters.Add("expiry", expiry);
+            parameters.Add("reason", reason);
+            XmlDocument doc = MakeRequest(Action.Protect, parameters);
+        }
+
         public void StabilizePage(string name, string reason, string editToken)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
@@ -1117,7 +1164,8 @@ namespace Claymore.SharpMediaWiki
         Move,
         Query,
         Review,
-        Delete
+        Delete,
+        Protect
     }
 
     public enum CreateFlags
