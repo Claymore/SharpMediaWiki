@@ -15,6 +15,7 @@ namespace Claymore.SharpMediaWiki
 
         public string BaseTimestamp { get; set; }
         public string Token { get; set; }
+        public string LastRevisionId { get; set; }
 
         static WikiPage()
         {
@@ -38,6 +39,11 @@ namespace Claymore.SharpMediaWiki
             {
                 return _text + string.Concat(_sections.ConvertAll(s => s.Text).ToArray());
             }
+        }
+
+        public string Title
+        {
+            get { return _title; }
         }
 
         public static WikiPage Parse(string title, string text)
