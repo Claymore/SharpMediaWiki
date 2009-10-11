@@ -362,10 +362,6 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new ArgumentException("Title shouldn't be empty.", "title");
             }
-            if (string.IsNullOrEmpty(text))
-            {
-                throw new ArgumentException("Text shouldn't be empty.", "text");
-            }
             try
             {
                 ParameterCollection parameters = new ParameterCollection();
