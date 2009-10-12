@@ -7,9 +7,9 @@ using System.IO.Compression;
 
 namespace Claymore.SharpMediaWiki
 {
-    public class Cache
+    public class WikiCache
     {
-        public void CacheCookies(Wiki wiki, string fileName)
+        public static void CacheCookies(Wiki wiki, string fileName)
         {
             using (FileStream fs = new FileStream(fileName, FileMode.Create))
             using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))
@@ -19,19 +19,19 @@ namespace Claymore.SharpMediaWiki
             }
         }
 
-        public void CacheCookies(Wiki wiki)
+        public static void CacheCookies(Wiki wiki)
         {
             Directory.CreateDirectory("Cache");
             string filename = @"Cache\cookie.jar";
             CacheCookies(wiki, filename);
         }
 
-        public bool LoadCookies(Wiki wiki)
+        public static bool LoadCookies(Wiki wiki)
         {
             return LoadCookies(wiki, @"Cache\cookie.jar");
         }
 
-        public bool LoadCookies(Wiki wiki, string fileName)
+        public static bool LoadCookies(Wiki wiki, string fileName)
         {
             if (!File.Exists(fileName))
             {
@@ -52,17 +52,17 @@ namespace Claymore.SharpMediaWiki
             return true;
         }
 
-        public bool LoadNamespaces(Wiki wiki)
+        public static bool LoadNamespaces(Wiki wiki)
         {
             return LoadNamespaces(wiki, @"Cache\namespaces.dat");
         }
 
-        public void CacheNamespaces(Wiki wiki)
+        public static void CacheNamespaces(Wiki wiki)
         {
             CacheNamespaces(wiki, @"Cache\namespaces.dat");
         }
 
-        public bool LoadNamespaces(Wiki wiki, string filename)
+        public static bool LoadNamespaces(Wiki wiki, string filename)
         {
             if (!File.Exists(filename))
             {
@@ -83,7 +83,7 @@ namespace Claymore.SharpMediaWiki
             return true;
         }
 
-        public void CacheNamespaces(Wiki wiki, string filename)
+        public static void CacheNamespaces(Wiki wiki, string filename)
         {
             using (FileStream fs = new FileStream(filename, FileMode.Create))
             using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))

@@ -33,6 +33,12 @@ namespace Claymore.SharpMediaWiki
             _sections = new List<WikiPageSection>();
         }
 
+        public WikiPage(string title, string text)
+            : this(title)
+        {
+            Text = text;
+        }
+
         public List<WikiPageSection> Sections
         {
             get { return _sections; }
@@ -55,7 +61,7 @@ namespace Claymore.SharpMediaWiki
             get { return _title; }
         }
 
-        public void LoadPage(Wiki wiki)
+        public void Load(Wiki wiki)
         {
             UriBuilder ub = new UriBuilder(wiki.Uri);
             ub.Path = "/w/index.php";
@@ -63,7 +69,7 @@ namespace Claymore.SharpMediaWiki
                     Uri.EscapeDataString(Title));
             try
             {
-                wiki.MakeRequest(ub.Uri, "GET");
+                Text = wiki.MakeRequest(ub.Uri, "GET");
             }
             catch (WebException e)
             {
@@ -110,9 +116,9 @@ namespace Claymore.SharpMediaWiki
             LastRevisionId = revid;
         }
 
-        public void Create(Wiki wiki, string summary)
+        public string Create(Wiki wiki, string summary)
         {
-            Save(wiki,
+            return Save(wiki,
                  "",
                  Text,
                  summary,
@@ -126,9 +132,9 @@ namespace Claymore.SharpMediaWiki
                  wiki.Token);
         }
 
-        public void Save(Wiki wiki, string summary)
+        public string Save(Wiki wiki, string summary)
         {
-            Save(wiki,
+            return Save(wiki,
                  "",
                  Text,
                  summary,
@@ -142,9 +148,9 @@ namespace Claymore.SharpMediaWiki
                  wiki.Token);
         }
 
-        public void Append(Wiki wiki, string text, string summary)
+        public string Append(Wiki wiki, string text, string summary)
         {
-            Save(wiki,
+            return Save(wiki,
                  "",
                  text,
                  summary,
@@ -158,9 +164,9 @@ namespace Claymore.SharpMediaWiki
                  wiki.Token);
         }
 
-        public void Prepend(Wiki wiki, string text, string summary)
+        public string Prepend(Wiki wiki, string text, string summary)
         {
-            Save(wiki,
+            return Save(wiki,
                  "",
                  text,
                  summary,
@@ -174,7 +180,7 @@ namespace Claymore.SharpMediaWiki
                  wiki.Token);
         }
 
-        public void Save(Wiki wiki,
+        public string Save(Wiki wiki,
                          string section,
                          string text,
                          string summary,
@@ -237,7 +243,9 @@ namespace Claymore.SharpMediaWiki
             if (result != null)
             {
                 LastRevisionId = result.Attributes["newrevid"].Value;
+                return LastRevisionId;
             }
+            return null;
         }
 
         public void Move(Wiki wiki,
@@ -470,6 +478,13 @@ namespace Claymore.SharpMediaWiki
             WikiPage page = new WikiPage(title);
             page.Parse(text);
             return page;
+        }
+
+        public static string LoadText(string title, Wiki wiki)
+        {
+            WikiPage page = new WikiPage(title);
+            page.Load(wiki);
+            return page.Text;
         }
     }
 }
