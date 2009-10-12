@@ -17,8 +17,8 @@ namespace Claymore.SharpMediaWiki
         private readonly Uri _uri;
         private int _maxLag;
         private string _userAgent;
+        private string _token;
         private DateTime _lastQueryTime;
-        private DateTime _lastEditTime;
         private bool _highLimits;
         private string _username;
         private bool _isBot;
@@ -57,12 +57,12 @@ namespace Claymore.SharpMediaWiki
 
         public int SleepBetweenEdits
         {
-            set { _sleepBetweenEdits = value * 1000; }
+            set { _sleepBetweenEdits = Math.Max(2, value) * 1000; }
         }
 
         public int SleepBetweenQueries
         {
-            set { _sleepBetweenQueries = value * 1000; }
+            set { _sleepBetweenQueries = Math.Max(2, value) * 1000; }
         }
 
         public Uri Uri
@@ -78,6 +78,11 @@ namespace Claymore.SharpMediaWiki
         public bool IsBot
         {
             get { return _isBot; }
+        }
+
+        public string Token
+        {
+            get { return _token; }
         }
 
         /// <summary>
@@ -117,12 +122,15 @@ namespace Claymore.SharpMediaWiki
                 _username = username;
 
                 parameters.Clear();
+                parameters.Add("prop", "info");
                 parameters.Add("meta", "userinfo");
                 parameters.Add("uiprop", "rights");
+                parameters.Add("intoken", "edit");
 
-                XmlDocument doc = MakeRequest(Action.Query, parameters);
+                XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
                 _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
                 _isBot = doc.SelectSingleNode("//rights[r=\"bot\"]/r") != null;
+                _token = doc.SelectSingleNode("//page").Attributes["edittoken"].Value;
             }
             catch (WebException e)
             {
@@ -135,12 +143,15 @@ namespace Claymore.SharpMediaWiki
             try
             {
                 ParameterCollection parameters = new ParameterCollection();
+                parameters.Add("prop", "info");
                 parameters.Add("meta", "userinfo");
                 parameters.Add("uiprop", "rights");
+                parameters.Add("intoken", "edit");
 
-                XmlDocument doc = MakeRequest(Action.Query, parameters);
+                XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
                 _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
                 _isBot = doc.SelectSingleNode("//rights[r=\"bot\"]/r") != null;
+                _token = doc.SelectSingleNode("//page").Attributes["edittoken"].Value;
             }
             catch (WebException e)
             {
@@ -172,327 +183,6 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new WikiException("Logout failed", e);
             }
-        }
-
-        /// <summary>
-        /// Loads raw text of the given page and returns it as System.String.
-        /// </summary>
-        /// <param name="title">Title of the page to load.</param>
-        /// <returns>A System.String that contains raw text of the page.</returns>
-        public string LoadPage(string title)
-        {
-            if (string.IsNullOrEmpty(title))
-            {
-                throw new ArgumentException("Title shouldn't be empty.", "title");
-            }
-            TimeSpan diff = DateTime.Now - _lastQueryTime;
-            if (diff.Milliseconds < _sleepBetweenQueries)
-            {
-                Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
-            }
-
-            UriBuilder ub = new UriBuilder(_uri);
-            ub.Path = "/w/index.php";
-            ub.Query = string.Format("title={0}&redirect=no&action=raw&ctype=text/plain&dontcountme=1",
-                    Uri.EscapeDataString(title));
-            try
-            {
-                HttpWebRequest request = PrepareRequest(ub.Uri, "GET");
-                WebResponse response = request.GetResponse();
-                using (StreamReader sr =
-                    new StreamReader(GetResponseStream((HttpWebResponse)response)))
-                {
-                    _lastQueryTime = DateTime.Now;
-                    return sr.ReadToEnd();
-                }
-            }
-            catch (WebException e)
-            {
-                _lastQueryTime = DateTime.Now;
-                if (e.Status == WebExceptionStatus.ProtocolError &&
-                    e.Message.Contains("(404)"))
-                {
-                    throw new WikiPageNotFound(title + " not found", e);
-                }
-                else
-                {
-                    throw new WikiException("Failed to load page " + title, e);
-                }
-            }
-        }
-
-        public WikiPage LoadPageEx(string title)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("prop", "info|revisions");
-            parameters.Add("intoken", "edit");
-            parameters.Add("rvprop", "timestamp|content|ids");
-            XmlDocument xml = Query(QueryBy.Titles, parameters, new string[] { title });
-            XmlNode node = xml.SelectSingleNode("//rev");
-            string baseTimeStamp = null;
-            string text = "";
-            string revid = "";
-            if (node != null && node.Attributes["timestamp"] != null)
-            {
-                baseTimeStamp = node.Attributes["timestamp"].Value;
-            }
-            if (node != null && node.Attributes["content"] != null)
-            {
-                text = node.Attributes["content"].Value;
-            }
-            if (node != null && node.Attributes["id"] != null)
-            {
-                revid = node.Attributes["id"].Value;
-            }
-            node = xml.SelectSingleNode("//page");
-            string editToken = node.Attributes["edittoken"].Value;
-
-            WikiPage page = WikiPage.Parse(title, text);
-            page.BaseTimestamp = baseTimeStamp;
-            page.Token = editToken;
-            page.LastRevisionId = revid;
-            return page;
-        }
-
-        public string SavePage(string title, string text, string comment)
-        {
-            return SavePage(title, "", text, comment,
-                MinorFlags.Minor, CreateFlags.NoCreate, WatchFlags.None, SaveFlags.Replace);
-        }
-
-        public void AppendTextToPage(string title, string text, string comment,
-            MinorFlags minor, WatchFlags watch)
-        {
-            SavePage(title, null, text, comment, minor, CreateFlags.NoCreate,
-                watch, SaveFlags.Append);
-        }
-
-        public void PrependTextToPage(string title, string text, string comment,
-            MinorFlags minor, WatchFlags watch)
-        {
-            SavePage(title, null, text, comment, minor, CreateFlags.NoCreate,
-                watch, SaveFlags.Prepend);
-        }
-
-        public string SavePage(string title, string section, string text, string summary,
-            MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode,
-            string basetimestamp, string starttimestamp, string editToken)
-        {
-            try
-            {
-                ParameterCollection parameters = new ParameterCollection();
-                parameters.Add("title", title);
-                if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
-                {
-                    parameters.Add("section", section);
-                }
-                parameters.Add("token", editToken);
-                if (minor != MinorFlags.None)
-                {
-                    parameters.Add(minor.ToString().ToLower());
-                }
-                if (create != CreateFlags.None)
-                {
-                    parameters.Add(create.ToString().ToLower());
-                }
-                if (watch != WatchFlags.None)
-                {
-                    parameters.Add(watch.ToString().ToLower());
-                }
-                if (mode == SaveFlags.Append)
-                {
-                    parameters.Add("appendtext", text);
-                }
-                else if (mode == SaveFlags.Prepend)
-                {
-                    parameters.Add("prependtext", text);
-                }
-                else
-                {
-                    parameters.Add("text", text);
-                }
-                if (_isBot)
-                {
-                    parameters.Add("bot");
-                }
-                if (!string.IsNullOrEmpty(basetimestamp))
-                {
-                    parameters.Add("basetimestamp", basetimestamp);
-                }
-                if (!string.IsNullOrEmpty(starttimestamp))
-                {
-                    parameters.Add("starttimestamp", starttimestamp);
-                }
-                parameters.Add("summary", summary);
-                //parameters.Add("md5", ComputeHashString(text));
-                parameters.Add("maxlag", MaxLag.ToString());
-
-                XmlDocument xml = MakeRequest(Action.Edit, parameters);
-                XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
-                if (result != null)
-                {
-                    return result.Attributes["newrevid"].Value;
-                }
-                else
-                {
-                    return null;
-                }
-            }
-            catch (WebException e)
-            {
-                throw new WikiException("Saving failed", e);
-            }
-        }
-
-        /// <summary>
-        /// Saves or creates a page or a page section.
-        /// </summary>
-        /// <param name="title">A page title.</param>
-        /// <param name="section">A section. Use "0" for the top section and "new" for a new one.</param>
-        /// <param name="text">Text of the page or section.</param>
-        /// <param name="summary">Edit summary. If section is "new" it will be used as section title.</param>
-        /// <param name="minor">Minor flag.</param>
-        /// <param name="create">Create flag.</param>
-        /// <param name="watch">Watch flag.</param>
-        /// <remarks><see cref="http://www.mediawiki.org/wiki/API:Edit_-_Create%26Edit_pages"/></remarks>
-        public string SavePage(string title, string section, string text, string summary,
-            MinorFlags minor, CreateFlags create, WatchFlags watch, SaveFlags mode)
-        {
-            if (string.IsNullOrEmpty(title))
-            {
-                throw new ArgumentException("Title shouldn't be empty.", "title");
-            }
-            try
-            {
-                ParameterCollection parameters = new ParameterCollection();
-                parameters.Add("prop", "info|revisions");
-                parameters.Add("rvprop", "timestamp");
-                parameters.Add("intoken", "edit");
-                parameters.Add("titles", title);
-
-                XmlDocument doc = MakeRequest(Action.Query, parameters);
-                XmlNode node = doc.SelectSingleNode("//page");
-                if (node.Attributes["edittoken"] == null)
-                {
-                    throw new WikiException("Saving failed: couldn't get edit token");
-                }
-                string editToken = node.Attributes["edittoken"].Value;
-                string realTitle = node.Attributes["title"].Value;
-                node = doc.SelectSingleNode("//rev");
-                string baseTimeStamp = null;
-                if (node != null && node.Attributes["timestamp"] != null)
-                {
-                    baseTimeStamp = node.Attributes["timestamp"].Value;
-                }
-
-                parameters.Clear();
-                parameters.Add("title", realTitle);
-                if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
-                {
-                    parameters.Add("section", section);
-                }
-                parameters.Add("token", editToken);
-                if (minor != MinorFlags.None)
-                {
-                    parameters.Add(minor.ToString().ToLower());
-                }
-                if (create != CreateFlags.None)
-                {
-                    parameters.Add(create.ToString().ToLower());
-                }
-                if (watch != WatchFlags.None)
-                {
-                    parameters.Add(watch.ToString().ToLower());
-                }
-                if (mode == SaveFlags.Append)
-                {
-                    parameters.Add("appendtext", text);
-                }
-                else if (mode == SaveFlags.Prepend)
-                {
-                    parameters.Add("prependtext", text);
-                }
-                else
-                {
-                    parameters.Add("text", text);
-                }
-                if (_isBot)
-                {
-                    parameters.Add("bot");
-                }
-                if (!string.IsNullOrEmpty(baseTimeStamp))
-                {
-                    parameters.Add("basetimestamp", baseTimeStamp);
-                }
-                parameters.Add("summary", summary);
-                //parameters.Add("md5", ComputeHashString(text));
-                parameters.Add("maxlag", MaxLag.ToString());
-
-                XmlDocument xml = MakeRequest(Action.Edit, parameters);
-                XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
-                if (result != null)
-                {
-                    return result.Attributes["newrevid"].Value;
-                }
-                else
-                {
-                    return null;
-                }
-            }
-            catch (WebException e)
-            {
-                throw new WikiException("Saving failed", e);
-            }
-        }
-
-        public void MovePage(string fromTitle, string toTitle, string reason,
-            bool moveTalk, bool noRedirect)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("prop", "info");
-            parameters.Add("intoken", "move");
-            parameters.Add("titles", fromTitle);
-            parameters.Add("maxlag", MaxLag.ToString());
-
-            XmlDocument doc = MakeRequest(Action.Query, parameters);
-            XmlNode node = doc.SelectSingleNode("//page");
-            string token = "";
-            if (node.Attributes["movetoken"] != null)
-            {
-                token = node.Attributes["movetoken"].Value;
-            }
-            string realTitle = node.Attributes["title"].Value;
-
-            parameters.Clear();
-            parameters.Add("from", fromTitle);
-            parameters.Add("to", toTitle);
-            parameters.Add("token", token);
-            parameters.Add("reason", reason);
-            if (moveTalk)
-            {
-                parameters.Add("movetalk");
-            }
-            if (noRedirect)
-            {
-                parameters.Add("noredirect");
-            }
-
-            MakeRequest(Action.Move, parameters);
-        }
-
-        public void ReviewPage(string revisionId, string accuracy, string comment,
-            string editToken)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("revid", revisionId);
-            parameters.Add("token", editToken);
-            parameters.Add("flag_accuracy", accuracy);
-            if (!string.IsNullOrEmpty(comment))
-            {
-                parameters.Add("comment", comment);
-            }
-
-            XmlDocument doc = MakeRequest(Action.Review, parameters);
         }
 
         public XmlDocument Enumerate(ParameterCollection parameters, bool getAll)
@@ -554,6 +244,13 @@ namespace Claymore.SharpMediaWiki
 
         public XmlDocument Query(QueryBy queryBy,
             ParameterCollection parameters,
+            string id)
+        {
+            return Query(queryBy, parameters, new string[] { id }, _highLimits ? 500 : 50);
+        }
+
+        public XmlDocument Query(QueryBy queryBy,
+            ParameterCollection parameters,
             IEnumerable<string> ids)
         {
             return Query(queryBy, parameters, ids, _highLimits ? 500 : 50);
@@ -610,33 +307,6 @@ namespace Claymore.SharpMediaWiki
             return document;
         }
 
-        public void DeletePage(string title, string reason)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("prop", "info");
-            parameters.Add("intoken", "edit");
-            parameters.Add("titles", title);
-
-            XmlDocument doc = MakeRequest(Action.Query, parameters);
-            XmlNode node = doc.SelectSingleNode("//page");
-            if (node.Attributes["edittoken"] == null)
-            {
-                throw new WikiException("DeletePage failed: couldn't get edit token");
-            }
-            string editToken = node.Attributes["edittoken"].Value;
-
-            DeletePage(title, reason, editToken);
-        }
-
-        public void DeletePage(string title, string reason, string editToken)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", title);
-            parameters.Add("token", editToken);
-            parameters.Add("reason", reason);
-            MakeRequest(Action.Delete, parameters);
-        }
-
         public int PageNamespace(string title)
         {
             foreach (var pair in _namespaces)
@@ -660,50 +330,6 @@ namespace Claymore.SharpMediaWiki
             foreach (XmlNode node in nodes)
             {
                 _namespaces.Add(node.FirstChild.Value, int.Parse(node.Attributes["id"].Value));
-            }
-        }
-
-        public bool LoadNamespaces()
-        {
-            return LoadNamespaces(@"Cache\namespaces.dat");
-        }
-
-        public void SaveNamespaces()
-        {
-            SaveNamespaces(@"Cache\namespaces.dat");
-        }
-
-        public bool LoadNamespaces(string filename)
-        {
-            if (!File.Exists(filename))
-            {
-                return false;
-            }
-            _namespaces.Clear();
-            Deserializer deserializer = new Deserializer(File.ReadAllBytes(filename));
-            int count = deserializer.GetInt();
-            for (int i = 0; i < count; ++i)
-            {
-                string ns = deserializer.GetString();
-                int number = deserializer.GetInt();
-                _namespaces.Add(ns, number);
-            }
-            return true;
-        }
-
-        public void SaveNamespaces(string filename)
-        {
-            Serializer serializer = new Serializer();
-            serializer.Put(_namespaces.Count);
-            foreach (var pair in _namespaces)
-            {
-                serializer.Put(pair.Key);
-                serializer.Put(pair.Value);
-            }
-            using (FileStream fs = new FileStream(filename, FileMode.CreateNew))
-            using (BinaryWriter streamWriter = new BinaryWriter(fs))
-            {
-                streamWriter.Write(serializer.ToArray());
             }
         }
 
@@ -750,7 +376,7 @@ namespace Claymore.SharpMediaWiki
 
         public XmlDocument MakeRequest(Action action, ParameterCollection parameters)
         {
-            TimeSpan diff = DateTime.Now - _lastEditTime;
+            TimeSpan diff = DateTime.Now - _lastQueryTime;
             if (action == Action.Edit && diff.Milliseconds < _sleepBetweenEdits)
             {
                 Thread.Sleep(_sleepBetweenEdits - diff.Milliseconds);
@@ -807,11 +433,7 @@ namespace Claymore.SharpMediaWiki
             {
                 _cookies = response.Cookies;
             }
-
-            if (action == Action.Edit)
-            {
-                _lastEditTime = DateTime.Now;
-            }
+            _lastQueryTime = DateTime.Now;
             return doc;
         }
 
@@ -910,23 +532,6 @@ namespace Claymore.SharpMediaWiki
             return serializer.ToArray();
         }
 
-        public void CacheCookies(string fileName)
-        {
-            using (FileStream fs = new FileStream(fileName, FileMode.Create))
-            using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))
-            {
-                byte[] data = CookiesToArray();
-                gs.Write(data, 0, data.Length);
-            }
-        }
-
-        public void CacheCookies()
-        {
-            Directory.CreateDirectory("Cache");
-            string filename = @"Cache\cookie.jar";
-            CacheCookies(filename);
-        }
-
         public void LoadCookies(byte[] data)
         {
             _cookies = new CookieCollection();
@@ -943,36 +548,10 @@ namespace Claymore.SharpMediaWiki
             }
         }
 
-        public bool LoadCookies()
-        {
-            return LoadCookies(@"Cache\cookie.jar");
-        }
-
-        public bool LoadCookies(string fileName)
-        {
-            if (!File.Exists(fileName))
-            {
-                return false;
-            }
-            using (FileStream fs = new FileStream(fileName, FileMode.Open))
-            using (GZipStream gs = new GZipStream(fs, CompressionMode.Decompress))
-            using (BinaryReader sr = new BinaryReader(gs))
-            {
-                List<byte> data = new List<byte>();
-                int b;
-                while ((b = sr.BaseStream.ReadByte()) != -1)
-                {
-                    data.Add((byte)b);
-                }
-                LoadCookies(data.ToArray());
-            }
-            return true;
-        }
-
         private HttpWebRequest PrepareRequest()
         {
             UriBuilder ub = new UriBuilder(_uri);
-            ub.Path = "/w/api.php";
+            ub.Path += "api.php";
             return PrepareRequest(ub.Uri, "POST");
         }
 
@@ -1088,18 +667,20 @@ namespace Claymore.SharpMediaWiki
             return null;
         }
 
-        public void ProtectPage(string title, string protection, string expiry, string reason, string token)
+        public void LoadNamespaces(IEnumerable<byte> data)
         {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", title);
-            parameters.Add("token", token);
-            parameters.Add("protections", protection);
-            parameters.Add("expiry", expiry);
-            parameters.Add("reason", reason);
-            XmlDocument doc = MakeRequest(Action.Protect, parameters);
+            _namespaces.Clear();
+            Deserializer deserializer = new Deserializer(data);
+            int count = deserializer.GetInt();
+            for (int i = 0; i < count; ++i)
+            {
+                string ns = deserializer.GetString();
+                int number = deserializer.GetInt();
+                _namespaces.Add(ns, number);
+            }
         }
 
-        public void StabilizePage(string name, string reason, string editToken)
+        public string MakeRequest(Uri uri, string method)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
             if (diff.Milliseconds < _sleepBetweenQueries)
@@ -1107,48 +688,26 @@ namespace Claymore.SharpMediaWiki
                 Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
             }
 
-            UriBuilder ub = new UriBuilder(_uri);
-            ub.Path = "/wiki/Служебная:Stabilization";
-            
-            HttpWebRequest request = PrepareRequest(ub.Uri, "POST");
-            ParameterCollection parameters = new ParameterCollection();
-
-            parameters.Add("wpEditToken", editToken);
-            parameters.Add("page", name);
-            parameters.Add("title", "Служебная:Stabilization");
-            parameters.Add("wpWatchthis", "0");
-            parameters.Add("wpReviewthis", "0");
-            parameters.Add("wpReason", reason);
-            parameters.Add("wpReasonSelection", "other");
-            parameters.Add("mwStabilize-expiry", "infinite");
-            parameters.Add("wpExpirySelection", "infinite");
-            parameters.Add("wpStableconfig-select", "1");
-            parameters.Add("wpStableconfig-override", "1");
-
-            StringBuilder attributes = new StringBuilder();
-            foreach (KeyValuePair<string, string> pair in parameters)
-            {
-                if (pair.Key == "format")
-                {
-                    continue;
-                }
-                attributes.Append(string.Format("&{0}={1}",
-                    pair.Key,
-                    EscapeString(pair.Value)));
-            }
-            string query = attributes.ToString().Remove(0, 1);
-            using (StreamWriter sw =
-                new StreamWriter(request.GetRequestStream()))
-            {
-                sw.Write(query);
-            }
+            HttpWebRequest request = PrepareRequest(uri, method);
             WebResponse response = request.GetResponse();
             using (StreamReader sr =
                 new StreamReader(GetResponseStream((HttpWebResponse)response)))
             {
-                string result = sr.ReadToEnd();
                 _lastQueryTime = DateTime.Now;
+                return sr.ReadToEnd();
             }
+        }
+
+        public byte[] NamespacesToArray()
+        {
+            Serializer serializer = new Serializer();
+            serializer.Put(_namespaces.Count);
+            foreach (var pair in _namespaces)
+            {
+                serializer.Put(pair.Key);
+                serializer.Put(pair.Value);
+            }
+            return serializer.ToArray();
         }
     }
 
@@ -1169,7 +728,7 @@ namespace Claymore.SharpMediaWiki
         None,
         NoCreate,
         CreateOnly,
-        Recreate
+        Recreate,
     }
 
     public enum MinorFlags

@@ -49,6 +49,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Cache.cs" />
     <Compile Include="Deserializer.cs" />
     <Compile Include="ParameterCollection.cs" />
     <Compile Include="Serializer.cs" />

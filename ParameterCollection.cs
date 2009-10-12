@@ -11,6 +11,8 @@ namespace Claymore.SharpMediaWiki
         {
             _parameters = new Dictionary<string, string>();
             _parameters.Add("format", "xml");
+            _parameters.Add("assert", "user");
+            _parameters.Add("maxlag", "5");
         }
 
         public ParameterCollection(ParameterCollection copy)
@@ -24,7 +26,11 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new ArgumentException("You can't add 'action' as a parameter.");
             }
-            if (key == "text")
+            else if (key == "assert" && value == "user")
+            {
+                throw new ArgumentException("You can't add 'assert' with value 'user' as a parameter.");
+            }
+            else if (key == "text")
             {
                 _parameters.Add(key, value);
             }
