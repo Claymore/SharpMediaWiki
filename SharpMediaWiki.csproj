@@ -58,6 +58,7 @@
     <Compile Include="WikiException.cs" />
     <Compile Include="WikiPage.cs" />
     <Compile Include="WikiPageSection.cs" />
+    <Compile Include="WikiTemplate.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="License.txt" />

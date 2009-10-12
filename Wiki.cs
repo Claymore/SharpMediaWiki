@@ -333,45 +333,89 @@ namespace Claymore.SharpMediaWiki
             }
         }
 
-        private string PrepareQuery(Action action, ParameterCollection parameters)
+        public void LoadNamespaces(IEnumerable<byte> data)
         {
-            string query = "";
-            switch (action)
+            _namespaces.Clear();
+            Deserializer deserializer = new Deserializer(data);
+            int count = deserializer.GetInt();
+            for (int i = 0; i < count; ++i)
             {
-                case Action.Login:
-                    query = "action=login";
-                    break;
-                case Action.Logout:
-                    query = "action=logout";
-                    break;
-                case Action.Query:
-                    query = "action=query";
-                    break;
-                case Action.Edit:
-                    query = "action=edit";
-                    break;
-                case Action.Move:
-                    query = "action=move";
-                    break;
-                case Action.Review:
-                    query = "action=review";
-                    break;
-                case Action.Delete:
-                    query = "action=delete";
-                    break;
-                case Action.Protect:
-                    query = "action=protect";
-                    break;
+                string ns = deserializer.GetString();
+                int number = deserializer.GetInt();
+                _namespaces.Add(ns, number);
             }
-            StringBuilder attributes = new StringBuilder();
-            foreach (KeyValuePair<string, string> pair in parameters)
+        }
+
+        public byte[] NamespacesToArray()
+        {
+            Serializer serializer = new Serializer();
+            serializer.Put(_namespaces.Count);
+            foreach (var pair in _namespaces)
             {
-                attributes.Append(string.Format("&{0}={1}",
-                    pair.Key,
-                    EscapeString(pair.Value)));
+                serializer.Put(pair.Key);
+                serializer.Put(pair.Value);
             }
-            query += attributes.ToString();
-            return query;
+            return serializer.ToArray();
+        }
+
+        public byte[] CookiesToArray()
+        {
+            Serializer serializer = new Serializer();
+            serializer.Put(_cookies.Count);
+            for (int i = 0; i < _cookies.Count; ++i)
+            {
+                serializer.Put(_cookies[i].Name);
+                serializer.Put(_cookies[i].Value);
+                serializer.Put(_cookies[i].Path);
+                serializer.Put(_cookies[i].Domain);
+            }
+            return serializer.ToArray();
+        }
+
+        public void LoadCookies(byte[] data)
+        {
+            _cookies = new CookieCollection();
+            Deserializer deserializer = new Deserializer(data);
+            int count = deserializer.GetInt();
+            for (int i = 0; i < count; ++i)
+            {
+                string name = deserializer.GetString();
+                string value = deserializer.GetString();
+                string path = deserializer.GetString();
+                string domain = deserializer.GetString();
+                Cookie cookie = new Cookie(name, value, path, domain);
+                _cookies.Add(cookie);
+            }
+        }
+
+        public string GetNamespace(int number)
+        {
+            foreach (var item in _namespaces)
+            {
+                if (item.Value == number)
+                {
+                    return item.Key;
+                }
+            }
+            return null;
+        }
+
+        public string MakeRequest(Uri uri, string method)
+        {
+            TimeSpan diff = DateTime.Now - _lastQueryTime;
+            if (diff.Milliseconds < _sleepBetweenQueries)
+            {
+                Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
+            }
+
+            HttpWebRequest request = PrepareRequest(uri, method);
+            WebResponse response = request.GetResponse();
+            using (StreamReader sr =
+                new StreamReader(GetResponseStream((HttpWebResponse)response)))
+            {
+                _lastQueryTime = DateTime.Now;
+                return sr.ReadToEnd();
+            }
         }
 
         public XmlDocument MakeRequest(Action action, ParameterCollection parameters)
@@ -501,6 +545,47 @@ namespace Claymore.SharpMediaWiki
             return null;
         }
 
+        private string PrepareQuery(Action action, ParameterCollection parameters)
+        {
+            string query = "";
+            switch (action)
+            {
+                case Action.Login:
+                    query = "action=login";
+                    break;
+                case Action.Logout:
+                    query = "action=logout";
+                    break;
+                case Action.Query:
+                    query = "action=query";
+                    break;
+                case Action.Edit:
+                    query = "action=edit";
+                    break;
+                case Action.Move:
+                    query = "action=move";
+                    break;
+                case Action.Review:
+                    query = "action=review";
+                    break;
+                case Action.Delete:
+                    query = "action=delete";
+                    break;
+                case Action.Protect:
+                    query = "action=protect";
+                    break;
+            }
+            StringBuilder attributes = new StringBuilder();
+            foreach (KeyValuePair<string, string> pair in parameters)
+            {
+                attributes.Append(string.Format("&{0}={1}",
+                    pair.Key,
+                    EscapeString(pair.Value)));
+            }
+            query += attributes.ToString();
+            return query;
+        }
+
         private static Stream GetResponseStream(HttpWebResponse response)
         {
             if (!_isRunningOnMono)
@@ -516,36 +601,6 @@ namespace Claymore.SharpMediaWiki
                 return new DeflateStream(response.GetResponseStream(), CompressionMode.Decompress);
             }
             return response.GetResponseStream();
-        }
-
-        public byte[] CookiesToArray()
-        {
-            Serializer serializer = new Serializer();
-            serializer.Put(_cookies.Count);
-            for (int i = 0; i < _cookies.Count; ++i)
-            {
-                serializer.Put(_cookies[i].Name);
-                serializer.Put(_cookies[i].Value);
-                serializer.Put(_cookies[i].Path);
-                serializer.Put(_cookies[i].Domain);
-            }
-            return serializer.ToArray();
-        }
-
-        public void LoadCookies(byte[] data)
-        {
-            _cookies = new CookieCollection();
-            Deserializer deserializer = new Deserializer(data);
-            int count = deserializer.GetInt();
-            for (int i = 0; i < count; ++i)
-            {
-                string name = deserializer.GetString();
-                string value = deserializer.GetString();
-                string path = deserializer.GetString();
-                string domain = deserializer.GetString();
-                Cookie cookie = new Cookie(name, value, path, domain);
-                _cookies.Add(cookie);
-            }
         }
 
         private HttpWebRequest PrepareRequest()
@@ -653,61 +708,6 @@ namespace Claymore.SharpMediaWiki
             {
                 get { return _name; }
             }
-        }
-
-        public string GetNamespace(int number)
-        {
-            foreach (var item in _namespaces)
-            {
-                if (item.Value == number)
-                {
-                    return item.Key;
-                }
-            }
-            return null;
-        }
-
-        public void LoadNamespaces(IEnumerable<byte> data)
-        {
-            _namespaces.Clear();
-            Deserializer deserializer = new Deserializer(data);
-            int count = deserializer.GetInt();
-            for (int i = 0; i < count; ++i)
-            {
-                string ns = deserializer.GetString();
-                int number = deserializer.GetInt();
-                _namespaces.Add(ns, number);
-            }
-        }
-
-        public string MakeRequest(Uri uri, string method)
-        {
-            TimeSpan diff = DateTime.Now - _lastQueryTime;
-            if (diff.Milliseconds < _sleepBetweenQueries)
-            {
-                Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
-            }
-
-            HttpWebRequest request = PrepareRequest(uri, method);
-            WebResponse response = request.GetResponse();
-            using (StreamReader sr =
-                new StreamReader(GetResponseStream((HttpWebResponse)response)))
-            {
-                _lastQueryTime = DateTime.Now;
-                return sr.ReadToEnd();
-            }
-        }
-
-        public byte[] NamespacesToArray()
-        {
-            Serializer serializer = new Serializer();
-            serializer.Put(_namespaces.Count);
-            foreach (var pair in _namespaces)
-            {
-                serializer.Put(pair.Key);
-                serializer.Put(pair.Value);
-            }
-            return serializer.ToArray();
         }
     }
 
