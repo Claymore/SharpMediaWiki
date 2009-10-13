@@ -22,11 +22,11 @@ namespace Example
     {
         static void Main(string[] args)
         {
-            Wiki wiki = new Wiki("http://en.wikipedia.org");
+            Wiki wiki = new Wiki("http://en.wikipedia.org/w/");
             // Login into en.wikipedia.org as "Username".
             wiki.Login("Username", "Secret");
             // Load raw text of the page titled "Wiki".
-            string pageText = wiki.LoadPage("Wiki");
+            string pageText = wiki.LoadText("Wiki");
             ParameterCollection parameters = new ParameterCollection();
             // We want page information and automatic resolving of redirects.
             parameters.Add("prop", "info");
