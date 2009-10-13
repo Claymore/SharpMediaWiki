@@ -7,8 +7,46 @@ using System.IO.Compression;
 
 namespace Claymore.SharpMediaWiki
 {
-    public class WikiCache
+    public static class WikiCache
     {
+        public static void Login(Wiki wiki, string username, string password)
+        {
+            if (!WikiCache.LoadCookies(wiki))
+            {
+                wiki.Login(username, password);
+                WikiCache.CacheCookies(wiki);
+            }
+            else
+            {
+                wiki.Login();
+                if (!wiki.IsBot)
+                {
+                    wiki.Logout();
+                    wiki.Login(username, password);
+                    WikiCache.CacheCookies(wiki);
+                }
+            }
+        }
+
+        public static void Login(Wiki wiki, string username, string password, string fileName)
+        {
+            if (!WikiCache.LoadCookies(wiki, fileName))
+            {
+                wiki.Login(username, password);
+                WikiCache.CacheCookies(wiki, fileName);
+            }
+            else
+            {
+                wiki.Login();
+                if (!wiki.IsBot)
+                {
+                    wiki.Logout();
+                    wiki.Login(username, password);
+                    WikiCache.CacheCookies(wiki, fileName);
+                }
+            }
+        }
+
         public static void CacheCookies(Wiki wiki, string fileName)
         {
             using (FileStream fs = new FileStream(fileName, FileMode.Create))
