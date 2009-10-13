@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Xml;
-using System.IO.Compression;
 
 namespace Claymore.SharpMediaWiki
 {
@@ -305,6 +305,277 @@ namespace Claymore.SharpMediaWiki
                 Enumerate(localParameters, document);
             }
             return document;
+        }
+
+        public string LoadText(string title)
+        {
+            if (string.IsNullOrEmpty(title))
+            {
+                throw new ArgumentException("Title shouldn't be empty.", "title");
+            }
+            UriBuilder ub = new UriBuilder(Uri);
+            ub.Path = "/w/index.php";
+            ub.Query = string.Format("title={0}&redirect=no&action=raw&ctype=text/plain&dontcountme=1",
+                    Uri.EscapeDataString(title));
+            try
+            {
+                return MakeRequest(ub.Uri, "GET");
+            }
+            catch (WebException e)
+            {
+                if (e.Status == WebExceptionStatus.ProtocolError &&
+                    e.Message.Contains("(404)"))
+                {
+                    throw new WikiPageNotFound(title + " not found", e);
+                }
+                else
+                {
+                    throw new WikiException("Failed to load page " + title, e);
+                }
+            }
+        }
+
+        public string Save(string title,
+                           string section,
+                           string text,
+                           string summary,
+                           MinorFlags minor,
+                           CreateFlags create,
+                           WatchFlags watch,
+                           SaveFlags mode,
+                           bool bot,
+                           string basetimestamp,
+                           string starttimestamp,
+                           string token)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("title", title);
+            if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
+            {
+                parameters.Add("section", section);
+            }
+            parameters.Add("token", token);
+            if (minor != MinorFlags.None)
+            {
+                parameters.Add(minor.ToString().ToLower());
+            }
+            if (create != CreateFlags.None)
+            {
+                parameters.Add(create.ToString().ToLower());
+            }
+            if (watch != WatchFlags.None)
+            {
+                parameters.Add(watch.ToString().ToLower());
+            }
+            if (mode == SaveFlags.Append)
+            {
+                parameters.Add("appendtext", text);
+            }
+            else if (mode == SaveFlags.Prepend)
+            {
+                parameters.Add("prependtext", text);
+            }
+            else
+            {
+                parameters.Add("text", text);
+            }
+            if (bot)
+            {
+                parameters.Add("bot");
+            }
+            if (!string.IsNullOrEmpty(basetimestamp))
+            {
+                parameters.Add("basetimestamp", basetimestamp);
+            }
+            if (!string.IsNullOrEmpty(starttimestamp))
+            {
+                parameters.Add("starttimestamp", starttimestamp);
+            }
+            parameters.Add("summary", summary);
+
+            XmlDocument xml = MakeRequest(Action.Edit, parameters);
+            XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
+            if (result != null)
+            {
+                return result.Attributes["newrevid"].Value;
+            }
+            return null;
+        }
+
+        public void Review(string revisionId,
+                           string accuracy,
+                           string comment,
+                           string editToken)
+        {
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("revid", revisionId);
+            parameters.Add("token", editToken);
+            parameters.Add("flag_accuracy", accuracy);
+            if (!string.IsNullOrEmpty(comment))
+            {
+                parameters.Add("comment", comment);
+            }
+
+            MakeRequest(Action.Review, parameters);
+        }
+
+        public void Move(string fromTitle, string toTitle, string reason)
+        {
+            Move(fromTitle, toTitle, reason, Token, true, false);
+        }
+
+        public void Move(string fromTitle,
+                         string toTitle,
+                         string reason,
+                         bool moveTalk,
+                         bool noRedirect)
+        {
+            Move(fromTitle, toTitle, reason, Token, moveTalk, noRedirect);
+        }
+
+        public void Move(string fromTitle,
+                         string toTitle,
+                         string reason,
+                         string token,
+                         bool moveTalk,
+                         bool noRedirect)
+        {
+            if (string.IsNullOrEmpty(fromTitle))
+            {
+                throw new ArgumentException("Title shouldn't be empty.", "fromTitle");
+            }
+            if (string.IsNullOrEmpty(toTitle))
+            {
+                throw new ArgumentException("Title shouldn't be empty.", "toTitle");
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token shouldn't be empty.", "token");
+            }
+
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("from", fromTitle);
+            parameters.Add("to", toTitle);
+            parameters.Add("token", token);
+            if (!string.IsNullOrEmpty(reason))
+            {
+                parameters.Add("reason", reason);
+            }
+            if (moveTalk)
+            {
+                parameters.Add("movetalk");
+            }
+            if (noRedirect)
+            {
+                parameters.Add("noredirect");
+            }
+
+            MakeRequest(Action.Move, parameters);
+        }
+
+        public void Delete(string title, string reason, string token)
+        {
+            if (string.IsNullOrEmpty(title))
+            {
+                throw new ArgumentException("Title shouldn't be empty.", "title");
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token shouldn't be empty.", "token");
+            }
+
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("title", title);
+            parameters.Add("token", token);
+            if (!string.IsNullOrEmpty(reason))
+            {
+                parameters.Add("reason", reason);
+            }
+            MakeRequest(Action.Delete, parameters);
+        }
+
+        public void UnProtect(string title, string reason, string token)
+        {
+            Protect(title, ProtectionFlags.None, ProtectionFlags.None, "", reason, token, false);
+        }
+
+        public void Protect(string title,
+                            ProtectionFlags edit,
+                            ProtectionFlags move,
+                            string expiry,
+                            string reason,
+                            string token,
+                            bool cascade)
+        {
+            if (string.IsNullOrEmpty(title))
+            {
+                throw new ArgumentException("Title shouldn't be empty.", "title");
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token shouldn't be empty.", "token");
+            }
+
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("title", title);
+            parameters.Add("token", token);
+            string protection = "";
+            if (edit != ProtectionFlags.None)
+            {
+                protection = "edit=" + edit.ToString().ToLower();
+            }
+            if (move != ProtectionFlags.None)
+            {
+                protection += (string.IsNullOrEmpty(protection) ? "" : "|") +
+                    "move=" + move.ToString().ToLower();
+            }
+            parameters.Add("protections", protection);
+            if (!string.IsNullOrEmpty(expiry))
+            {
+                parameters.Add("expiry", expiry);
+            }
+            if (!string.IsNullOrEmpty(reason))
+            {
+                parameters.Add("reason", reason);
+            }
+            if (cascade)
+            {
+                parameters.Add("cascade");
+            }
+            MakeRequest(Action.Protect, parameters);
+        }
+
+        public void Stabilize(string title, string reason, string editToken)
+        {
+            UriBuilder ub = new UriBuilder(Uri);
+            ub.Path = "/wiki/Special:Stabilization";
+
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("wpEditToken", editToken);
+            parameters.Add("page", title);
+            parameters.Add("title", "Special:Stabilization");
+            parameters.Add("wpWatchthis", "0");
+            parameters.Add("wpReviewthis", "0");
+            parameters.Add("wpReason", reason);
+            parameters.Add("wpReasonSelection", "other");
+            parameters.Add("mwStabilize-expiry", "infinite");
+            parameters.Add("wpExpirySelection", "infinite");
+            parameters.Add("wpStableconfig-select", "1");
+            parameters.Add("wpStableconfig-override", "1");
+
+            StringBuilder attributes = new StringBuilder();
+            foreach (KeyValuePair<string, string> pair in parameters)
+            {
+                if (pair.Key == "format")
+                {
+                    continue;
+                }
+                attributes.Append(string.Format("&{0}={1}",
+                    pair.Key,
+                    Uri.EscapeDataString(pair.Value)));
+            }
+            ub.Query = attributes.ToString().Substring(1);
+            string result = MakeRequest(ub.Uri, "POST");
         }
 
         public int PageNamespace(string title)
@@ -757,5 +1028,12 @@ namespace Claymore.SharpMediaWiki
         Replace,
         Append,
         Prepend
+    }
+
+    public enum ProtectionFlags
+    {
+        None,
+        Autoconfirmed,
+        Sysop
     }
 }

@@ -4,7 +4,6 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
-using System.Net;
 
 namespace Claymore.SharpMediaWiki
 {
@@ -63,26 +62,7 @@ namespace Claymore.SharpMediaWiki
 
         public void Load(Wiki wiki)
         {
-            UriBuilder ub = new UriBuilder(wiki.Uri);
-            ub.Path = "/w/index.php";
-            ub.Query = string.Format("title={0}&redirect=no&action=raw&ctype=text/plain&dontcountme=1",
-                    Uri.EscapeDataString(Title));
-            try
-            {
-                Text = wiki.MakeRequest(ub.Uri, "GET");
-            }
-            catch (WebException e)
-            {
-                if (e.Status == WebExceptionStatus.ProtocolError &&
-                    e.Message.Contains("(404)"))
-                {
-                    throw new WikiPageNotFound(Title + " not found", e);
-                }
-                else
-                {
-                    throw new WikiException("Failed to load page " + Title, e);
-                }
-            }
+            Parse(wiki.LoadText(Title));
         }
 
         public void LoadEx(Wiki wiki)
@@ -114,11 +94,12 @@ namespace Claymore.SharpMediaWiki
             BaseTimestamp = baseTimeStamp;
             Token = editToken;
             LastRevisionId = revid;
+            Parse(text);
         }
 
         public string Create(Wiki wiki, string summary)
         {
-            return Save(wiki,
+            return wiki.Save(Title,
                  "",
                  Text,
                  summary,
@@ -134,7 +115,7 @@ namespace Claymore.SharpMediaWiki
 
         public string Save(Wiki wiki, string summary)
         {
-            return Save(wiki,
+            return wiki.Save(Title,
                  "",
                  Text,
                  summary,
@@ -148,9 +129,25 @@ namespace Claymore.SharpMediaWiki
                  wiki.Token);
         }
 
+        public string SaveSection(Wiki wiki, string section, string text, string summary)
+        {
+            return wiki.Save(Title,
+                section,
+                text,
+                summary,
+                MinorFlags.None,
+                CreateFlags.NoCreate,
+                WatchFlags.None,
+                SaveFlags.Replace,
+                true,
+                BaseTimestamp,
+                "",
+                wiki.Token);
+        }
+
         public string Append(Wiki wiki, string text, string summary)
         {
-            return Save(wiki,
+            return wiki.Save(Title,
                  "",
                  text,
                  summary,
@@ -166,7 +163,7 @@ namespace Claymore.SharpMediaWiki
 
         public string Prepend(Wiki wiki, string text, string summary)
         {
-            return Save(wiki,
+            return wiki.Save(Title,
                  "",
                  text,
                  summary,
@@ -180,72 +177,9 @@ namespace Claymore.SharpMediaWiki
                  wiki.Token);
         }
 
-        public string Save(Wiki wiki,
-                         string section,
-                         string text,
-                         string summary,
-                         MinorFlags minor,
-                         CreateFlags create,
-                         WatchFlags watch,
-                         SaveFlags mode,
-                         bool bot,
-                         string basetimestamp,
-                         string starttimestamp,
-                         string token)
+        public void Move(Wiki wiki, string newTitle, string reason)
         {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", Title);
-            if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
-            {
-                parameters.Add("section", section);
-            }
-            parameters.Add("token", token);
-            if (minor != MinorFlags.None)
-            {
-                parameters.Add(minor.ToString().ToLower());
-            }
-            if (create != CreateFlags.None)
-            {
-                parameters.Add(create.ToString().ToLower());
-            }
-            if (watch != WatchFlags.None)
-            {
-                parameters.Add(watch.ToString().ToLower());
-            }
-            if (mode == SaveFlags.Append)
-            {
-                parameters.Add("appendtext", text);
-            }
-            else if (mode == SaveFlags.Prepend)
-            {
-                parameters.Add("prependtext", text);
-            }
-            else
-            {
-                parameters.Add("text", text);
-            }
-            if (bot)
-            {
-                parameters.Add("bot");
-            }
-            if (!string.IsNullOrEmpty(basetimestamp))
-            {
-                parameters.Add("basetimestamp", basetimestamp);
-            }
-            if (!string.IsNullOrEmpty(starttimestamp))
-            {
-                parameters.Add("starttimestamp", starttimestamp);
-            }
-            parameters.Add("summary", summary);
-
-            XmlDocument xml = wiki.MakeRequest(Action.Edit, parameters);
-            XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
-            if (result != null)
-            {
-                LastRevisionId = result.Attributes["newrevid"].Value;
-                return LastRevisionId;
-            }
-            return null;
+            wiki.Move(Title, newTitle, reason, wiki.Token, true, false);
         }
 
         public void Move(Wiki wiki,
@@ -254,130 +188,31 @@ namespace Claymore.SharpMediaWiki
                          bool moveTalk,
                          bool noRedirect)
         {
-            if (string.IsNullOrEmpty(Token))
-            {
-                Token = wiki.Token;
-            }
-            Move(wiki, newTitle, reason, Token, moveTalk, noRedirect);
-        }
-
-        public void Move(Wiki wiki,
-                         string newTitle,
-                         string reason,
-                         string token,
-                         bool moveTalk,
-                         bool noRedirect)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("from", Title);
-            parameters.Add("to", newTitle);
-            parameters.Add("token", token);
-            parameters.Add("reason", reason);
-            if (moveTalk)
-            {
-                parameters.Add("movetalk");
-            }
-            if (noRedirect)
-            {
-                parameters.Add("noredirect");
-            }
-
-            wiki.MakeRequest(Action.Move, parameters);
+            wiki.Move(Title, newTitle, reason, wiki.Token, moveTalk, noRedirect);
         }
 
         public void Delete(Wiki wiki, string reason)
         {
-            if (string.IsNullOrEmpty(Token))
-            {
-                Token = wiki.Token;
-            }
-
-            Delete(wiki, reason, Token);
+            wiki.Delete(Title, reason, wiki.Token);
         }
 
-        public void Delete(Wiki wiki, string reason, string token)
+        public void Protect(Wiki wiki,
+                            ProtectionFlags edit,
+                            ProtectionFlags move,
+                            string expiry,
+                            string reason)
         {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", Title);
-            parameters.Add("token", token);
-            parameters.Add("reason", reason);
-            wiki.MakeRequest(Action.Delete, parameters);
+            wiki.Protect(Title, edit, move, expiry, reason, wiki.Token, false);
         }
 
-        public void Protect(Wiki wiki, string protection, string expiry, string reason)
+        public void UpProtect(Wiki wiki, string reason)
         {
-            if (string.IsNullOrEmpty(Token))
-            {
-                Token = wiki.Token;
-            }
-            Protect(wiki, protection, expiry, reason, Token);
-        }
-
-        public void Protect(Wiki wiki, string protection, string expiry, string reason, string token)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", Title);
-            parameters.Add("token", token);
-            parameters.Add("protections", protection);
-            parameters.Add("expiry", expiry);
-            parameters.Add("reason", reason);
-            wiki.MakeRequest(Action.Protect, parameters);
-        }
-
-        public static void Review(Wiki wiki,
-                                  string revisionId,
-                                  string accuracy,
-                                  string comment,
-                                  string editToken)
-        {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("revid", revisionId);
-            parameters.Add("token", editToken);
-            parameters.Add("flag_accuracy", accuracy);
-            if (!string.IsNullOrEmpty(comment))
-            {
-                parameters.Add("comment", comment);
-            }
-
-            wiki.MakeRequest(Action.Review, parameters);
+            wiki.UnProtect(Title, reason, wiki.Token);
         }
 
         public void Stabilize(Wiki wiki, string reason)
         {
-            Stabilize(wiki, reason, wiki.Token);
-        }
-
-        public void Stabilize(Wiki wiki, string reason, string editToken)
-        {
-            UriBuilder ub = new UriBuilder(wiki.Uri);
-            ub.Path = "/wiki/Special:Stabilization";
-
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("wpEditToken", editToken);
-            parameters.Add("page", Title);
-            parameters.Add("title", "Special:Stabilization");
-            parameters.Add("wpWatchthis", "0");
-            parameters.Add("wpReviewthis", "0");
-            parameters.Add("wpReason", reason);
-            parameters.Add("wpReasonSelection", "other");
-            parameters.Add("mwStabilize-expiry", "infinite");
-            parameters.Add("wpExpirySelection", "infinite");
-            parameters.Add("wpStableconfig-select", "1");
-            parameters.Add("wpStableconfig-override", "1");
-
-            StringBuilder attributes = new StringBuilder();
-            foreach (KeyValuePair<string, string> pair in parameters)
-            {
-                if (pair.Key == "format")
-                {
-                    continue;
-                }
-                attributes.Append(string.Format("&{0}={1}",
-                    pair.Key,
-                    Uri.EscapeDataString(pair.Value)));
-            }
-            ub.Query = attributes.ToString().Substring(1);
-            string result = wiki.MakeRequest(ub.Uri, "POST");
+            wiki.Stabilize(Title, reason, wiki.Token);
         }
 
         public void Parse(string text)
@@ -478,13 +313,6 @@ namespace Claymore.SharpMediaWiki
             WikiPage page = new WikiPage(title);
             page.Parse(text);
             return page;
-        }
-
-        public static string LoadText(string title, Wiki wiki)
-        {
-            WikiPage page = new WikiPage(title);
-            page.Load(wiki);
-            return page.Text;
         }
     }
 }
