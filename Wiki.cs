@@ -39,7 +39,7 @@ namespace Claymore.SharpMediaWiki
             UriBuilder ub = new UriBuilder(uri);
             _uri = ub.Uri;
             _highLimits = false;
-            _isBot = true;
+            _isBot = false;
             _maxLag = 5;
             SleepBetweenEdits = 10;
             SleepBetweenQueries = 10;
@@ -882,7 +882,7 @@ namespace Claymore.SharpMediaWiki
                 string code = node.Attributes["code"].Value;
                 throw MakeActionException(action, code);
             }
-            node = doc.SelectSingleNode(action.ToString().ToLower());
+            node = doc.SelectSingleNode("//" + action.ToString().ToLower());
             if (node != null && node.Attributes["result"] != null)
             {
                 string result = node.Attributes["result"].Value;

@@ -9,10 +9,12 @@ namespace Claymore.SharpMediaWiki
 
         public ParameterCollection()
         {
-            _parameters = new Dictionary<string, string>();
-            _parameters.Add("format", "xml");
-            _parameters.Add("assert", "user");
-            _parameters.Add("maxlag", "5");
+            _parameters = new Dictionary<string, string>
+            {
+                { "format", "xml" },
+                { "assert", "user" },
+                { "maxlag", "5" }
+            };
         }
 
         public ParameterCollection(ParameterCollection copy)
@@ -49,6 +51,8 @@ namespace Claymore.SharpMediaWiki
         {
             _parameters.Clear();
             _parameters.Add("format", "xml");
+            _parameters.Add("assert", "user");
+            _parameters.Add("maxlag", "5");
         }
 
         #region IEnumerable<KeyValuePair<string,string>> Members
