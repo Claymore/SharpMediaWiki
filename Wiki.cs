@@ -324,7 +324,7 @@ namespace Claymore.SharpMediaWiki
                     Uri.EscapeDataString(title));
             try
             {
-                return MakeRequest(ub.Uri, "GET");
+                return MakeRequest(ub.Uri, RequestMethod.Get);
             }
             catch (WebException e)
             {
@@ -723,7 +723,7 @@ namespace Claymore.SharpMediaWiki
                     Uri.EscapeDataString(pair.Value)));
             }
             ub.Query = attributes.ToString().Substring(1);
-            string result = MakeRequest(ub.Uri, "POST");
+            string result = MakeRequest(ub.Uri, RequestMethod.Post);
         }
 
         public int PageNamespace(string title)
@@ -821,7 +821,7 @@ namespace Claymore.SharpMediaWiki
             return null;
         }
 
-        public string MakeRequest(Uri uri, string method)
+        public string MakeRequest(Uri uri, RequestMethod method)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
             if (diff.Milliseconds < _sleepBetweenQueries)
@@ -1007,15 +1007,15 @@ namespace Claymore.SharpMediaWiki
         {
             UriBuilder ub = new UriBuilder(_uri);
             ub.Path += "api.php";
-            return PrepareRequest(ub.Uri, "POST");
+            return PrepareRequest(ub.Uri, RequestMethod.Post);
         }
 
-        private HttpWebRequest PrepareRequest(Uri uri, string method)
+        private HttpWebRequest PrepareRequest(Uri uri, RequestMethod method)
         {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
             request.AllowAutoRedirect = false;
-            request.Method = method;
-            if (request.Method == "POST")
+            request.Method = method.ToString().ToUpper();
+            if (method == RequestMethod.Post)
             {
                 request.ContentType = "application/x-www-form-urlencoded";
             }
@@ -1133,6 +1133,12 @@ namespace Claymore.SharpMediaWiki
                 return string.Format("{0}={1}", Action, Group).ToLower();
             }
         }
+    }
+
+    public enum RequestMethod
+    {
+        Get,
+        Post
     }
 
     public enum Action
