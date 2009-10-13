@@ -31,7 +31,7 @@ namespace Claymore.SharpMediaWiki
         /// Initializes a new instance of the Wiki class with the specified URI.
         /// </summary>
         /// <param name="url">A URI string.</param>
-        /// <example>Wiki wiki = new Wiki("http://en.wikipedia.org/");</example>
+        /// <example>Wiki wiki = new Wiki("http://en.wikipedia.org/w/");</example>
         /// <exception cref="System.ArgumentNullException" />
         /// <exception cref="System.UriFormatException" />
         public Wiki(string uri)
@@ -106,9 +106,11 @@ namespace Claymore.SharpMediaWiki
             {
                 return;
             }
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("lgname", username);
-            parameters.Add("lgpassword", password);
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "lgname", username },
+                { "lgpassword", password }
+            };
 
             try
             {
@@ -118,14 +120,15 @@ namespace Claymore.SharpMediaWiki
                 {
                     throw new WikiException("Login failed, server returned '" + result + "'.");
                 }
-                
                 _username = username;
 
-                parameters.Clear();
-                parameters.Add("prop", "info");
-                parameters.Add("meta", "userinfo");
-                parameters.Add("uiprop", "rights");
-                parameters.Add("intoken", "edit");
+                parameters = new ParameterCollection
+                {
+                    { "prop", "info" },
+                    { "meta", "userinfo" },
+                    { "uiprop", "rights" },
+                    { "intoken", "edit" }
+                };
 
                 XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
                 _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
@@ -142,11 +145,13 @@ namespace Claymore.SharpMediaWiki
         {
             try
             {
-                ParameterCollection parameters = new ParameterCollection();
-                parameters.Add("prop", "info");
-                parameters.Add("meta", "userinfo");
-                parameters.Add("uiprop", "rights");
-                parameters.Add("intoken", "edit");
+                ParameterCollection parameters = new ParameterCollection
+                {
+                    { "prop", "info" },
+                    { "meta", "userinfo" },
+                    { "uiprop", "rights" },
+                    { "intoken", "edit" }
+                };
 
                 XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
                 _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
@@ -335,6 +340,90 @@ namespace Claymore.SharpMediaWiki
             }
         }
 
+        public string Append(string title, string text, string summary)
+        {
+            return Save(title,
+                        "",
+                        text,
+                        summary,
+                        MinorFlags.None,
+                        CreateFlags.CreateOnly,
+                        WatchFlags.None,
+                        SaveFlags.Append,
+                        true,
+                        "",
+                        "",
+                        Token);
+        }
+
+        public string Prepend(string title, string text, string summary)
+        {
+            return Save(title,
+                        "",
+                        text,
+                        summary,
+                        MinorFlags.None,
+                        CreateFlags.CreateOnly,
+                        WatchFlags.None,
+                        SaveFlags.Prepend,
+                        true,
+                        "",
+                        "",
+                        Token);
+        }
+        
+        public string Create(string title, string text, string summary)
+        {
+            return Save(title,
+                        "",
+                        text,
+                        summary,
+                        MinorFlags.None,
+                        CreateFlags.CreateOnly,
+                        WatchFlags.None,
+                        SaveFlags.Replace,
+                        true,
+                        "",
+                        "",
+                        Token);
+        }
+
+        public string SaveSection(string title, string section, string text, string summary)
+        {
+            if (string.IsNullOrEmpty(section))
+            {
+                throw new ArgumentException("Section shouldn't be empty.", "section");
+            }
+            return Save(title,
+                        section,
+                        text,
+                        summary,
+                        MinorFlags.None,
+                        CreateFlags.None,
+                        WatchFlags.None,
+                        SaveFlags.Replace,
+                        true,
+                        "",
+                        "",
+                        Token);
+        }
+
+        public string Save(string title, string text, string summary)
+        {
+            return Save(title,
+                        "",
+                        text,
+                        summary,
+                        MinorFlags.None,
+                        CreateFlags.None,
+                        WatchFlags.None,
+                        SaveFlags.Replace,
+                        true,
+                        "",
+                        "",
+                        Token);
+        }
+
         public string Save(string title,
                            string section,
                            string text,
@@ -348,13 +437,24 @@ namespace Claymore.SharpMediaWiki
                            string starttimestamp,
                            string token)
         {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", title);
+            if (string.IsNullOrEmpty(title))
+            {
+                throw new ArgumentException("Title shouldn't be empty.", "title");
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token shouldn't be empty.", "token");
+            }
+
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "title", title },
+                { "token", token }
+            };
             if (mode == SaveFlags.Replace && !string.IsNullOrEmpty(section))
             {
                 parameters.Add("section", section);
             }
-            parameters.Add("token", token);
             if (minor != MinorFlags.None)
             {
                 parameters.Add(minor.ToString().ToLower());
@@ -391,13 +491,23 @@ namespace Claymore.SharpMediaWiki
             {
                 parameters.Add("starttimestamp", starttimestamp);
             }
-            parameters.Add("summary", summary);
-
-            XmlDocument xml = MakeRequest(Action.Edit, parameters);
-            XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
-            if (result != null)
+            if (!string.IsNullOrEmpty(summary))
             {
-                return result.Attributes["newrevid"].Value;
+                parameters.Add("summary", summary);
+            }
+
+            try
+            {
+                XmlDocument xml = MakeRequest(Action.Edit, parameters);
+                XmlNode result = xml.SelectSingleNode("//edit[@newrevid]");
+                if (result != null)
+                {
+                    return result.Attributes["newrevid"].Value;
+                }
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Saving failed", e);
             }
             return null;
         }
@@ -405,18 +515,34 @@ namespace Claymore.SharpMediaWiki
         public void Review(string revisionId,
                            string accuracy,
                            string comment,
-                           string editToken)
+                           string token)
         {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("revid", revisionId);
-            parameters.Add("token", editToken);
-            parameters.Add("flag_accuracy", accuracy);
+            if (string.IsNullOrEmpty(revisionId))
+            {
+                throw new ArgumentException("Revision ID shouldn't be empty.", "revisionId");
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token shouldn't be empty.", "token");
+            }
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "revid", revisionId} ,
+                { "token", token },
+                { "flag_accuracy", accuracy }
+            };
             if (!string.IsNullOrEmpty(comment))
             {
                 parameters.Add("comment", comment);
             }
-
-            MakeRequest(Action.Review, parameters);
+            try
+            {
+                MakeRequest(Action.Review, parameters);
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Review failed", e);
+            }
         }
 
         public void Move(string fromTitle, string toTitle, string reason)
@@ -453,10 +579,12 @@ namespace Claymore.SharpMediaWiki
                 throw new ArgumentException("Token shouldn't be empty.", "token");
             }
 
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("from", fromTitle);
-            parameters.Add("to", toTitle);
-            parameters.Add("token", token);
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "from", fromTitle },
+                { "to", toTitle },
+                { "token", token },
+            };
             if (!string.IsNullOrEmpty(reason))
             {
                 parameters.Add("reason", reason);
@@ -470,7 +598,14 @@ namespace Claymore.SharpMediaWiki
                 parameters.Add("noredirect");
             }
 
-            MakeRequest(Action.Move, parameters);
+            try
+            {
+                MakeRequest(Action.Move, parameters);
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Move failed", e);
+            }
         }
 
         public void Delete(string title, string reason, string token)
@@ -484,25 +619,40 @@ namespace Claymore.SharpMediaWiki
                 throw new ArgumentException("Token shouldn't be empty.", "token");
             }
 
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", title);
-            parameters.Add("token", token);
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "title", title },
+                { "token", token }
+            };
             if (!string.IsNullOrEmpty(reason))
             {
                 parameters.Add("reason", reason);
             }
-            MakeRequest(Action.Delete, parameters);
+            try
+            {
+                MakeRequest(Action.Delete, parameters);
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Delete failed", e);
+            }
         }
 
         public void UnProtect(string title, string reason, string token)
         {
-            Protect(title, ProtectionFlags.None, ProtectionFlags.None, "", reason, token, false);
+            Protect(title,
+                new List<Protection>
+                {
+                    new Protection(Action.Edit, UserGroup.None),
+                    new Protection(Action.Move, UserGroup.None),
+                },
+                reason,
+                token,
+                false);
         }
 
         public void Protect(string title,
-                            ProtectionFlags edit,
-                            ProtectionFlags move,
-                            string expiry,
+                            List<Protection> protections,
                             string reason,
                             string token,
                             bool cascade)
@@ -516,24 +666,15 @@ namespace Claymore.SharpMediaWiki
                 throw new ArgumentException("Token shouldn't be empty.", "token");
             }
 
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("title", title);
-            parameters.Add("token", token);
-            string protection = "";
-            if (edit != ProtectionFlags.None)
+            ParameterCollection parameters = new ParameterCollection
             {
-                protection = "edit=" + edit.ToString().ToLower();
-            }
-            if (move != ProtectionFlags.None)
-            {
-                protection += (string.IsNullOrEmpty(protection) ? "" : "|") +
-                    "move=" + move.ToString().ToLower();
-            }
-            parameters.Add("protections", protection);
-            if (!string.IsNullOrEmpty(expiry))
-            {
-                parameters.Add("expiry", expiry);
-            }
+                { "title", title },
+                { "token", token },
+                { "protections", string.Join("|",
+                    protections.ConvertAll(p => p.ToString()).ToArray()) },
+                { "expiry", string.Join("|",
+                    protections.ConvertAll(p => p.Expiry).ToArray()) },
+            };
             if (!string.IsNullOrEmpty(reason))
             {
                 parameters.Add("reason", reason);
@@ -542,7 +683,14 @@ namespace Claymore.SharpMediaWiki
             {
                 parameters.Add("cascade");
             }
-            MakeRequest(Action.Protect, parameters);
+            try
+            {
+                MakeRequest(Action.Protect, parameters);
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Protect failed", e);
+            }
         }
 
         public void Stabilize(string title, string reason, string editToken)
@@ -593,9 +741,11 @@ namespace Claymore.SharpMediaWiki
         public void GetNamespaces()
         {
             _namespaces.Clear();
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("meta", "siteinfo");
-            parameters.Add("siprop", "namespaces");
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "meta", "siteinfo" },
+                { "siprop", "namespaces" }
+            };
             XmlDocument xml = Enumerate(parameters, true);
             XmlNodeList nodes = xml.SelectNodes("//ns[@id > 0]");
             foreach (XmlNode node in nodes)
@@ -821,29 +971,8 @@ namespace Claymore.SharpMediaWiki
             string query = "";
             switch (action)
             {
-                case Action.Login:
-                    query = "action=login";
-                    break;
-                case Action.Logout:
-                    query = "action=logout";
-                    break;
-                case Action.Query:
-                    query = "action=query";
-                    break;
-                case Action.Edit:
-                    query = "action=edit";
-                    break;
-                case Action.Move:
-                    query = "action=move";
-                    break;
-                case Action.Review:
-                    query = "action=review";
-                    break;
-                case Action.Delete:
-                    query = "action=delete";
-                    break;
-                case Action.Protect:
-                    query = "action=protect";
+                default:
+                    query = "action=" + action.ToString().ToLower();
                     break;
             }
             StringBuilder attributes = new StringBuilder();
@@ -980,6 +1109,30 @@ namespace Claymore.SharpMediaWiki
                 get { return _name; }
             }
         }
+
+        public class Protection
+        {
+            public Action Action { get; private set; }
+            public UserGroup Group { get; private set; }
+            public string Expiry { get; private set; }
+
+            public Protection(Action action, UserGroup group)
+                : this(action, group, "")
+            {
+            }
+
+            public Protection(Action action, UserGroup group, string expiry)
+            {
+                Action = action;
+                Group = group;
+                Expiry = expiry;
+            }
+
+            public override string ToString()
+            {
+                return string.Format("{0}={1}", Action, Group).ToLower();
+            }
+        }
     }
 
     public enum Action
@@ -991,7 +1144,23 @@ namespace Claymore.SharpMediaWiki
         Query,
         Review,
         Delete,
-        Protect
+        Protect,
+        SiteMatrix,
+        OpenSearch,
+        ClickTracking,
+        ExpandTemplates,
+        Parse,
+        FeedWatchList,
+        ParamInfo,
+        Purge,
+        Rollback,
+        Undelete,
+        Block,
+        Unblock,
+        Upload,
+        EmailUser,
+        Watch,
+        UserRights
     }
 
     public enum CreateFlags
@@ -1030,7 +1199,7 @@ namespace Claymore.SharpMediaWiki
         Prepend
     }
 
-    public enum ProtectionFlags
+    public enum UserGroup
     {
         None,
         Autoconfirmed,

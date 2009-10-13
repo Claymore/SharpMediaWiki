@@ -67,10 +67,12 @@ namespace Claymore.SharpMediaWiki
 
         public void LoadEx(Wiki wiki)
         {
-            ParameterCollection parameters = new ParameterCollection();
-            parameters.Add("prop", "info|revisions");
-            parameters.Add("intoken", "edit");
-            parameters.Add("rvprop", "timestamp|content|ids");
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "prop", "info|revisions" },
+                { "intoken", "edit" },
+                { "rvprop", "timestamp|content|ids" },
+            };
             XmlDocument xml = wiki.Query(QueryBy.Titles, parameters, Title);
             XmlNode node = xml.SelectSingleNode("//rev");
             string baseTimeStamp = "";
@@ -129,22 +131,6 @@ namespace Claymore.SharpMediaWiki
                  wiki.Token);
         }
 
-        public string SaveSection(Wiki wiki, string section, string text, string summary)
-        {
-            return wiki.Save(Title,
-                section,
-                text,
-                summary,
-                MinorFlags.None,
-                CreateFlags.NoCreate,
-                WatchFlags.None,
-                SaveFlags.Replace,
-                true,
-                BaseTimestamp,
-                "",
-                wiki.Token);
-        }
-
         public string Append(Wiki wiki, string text, string summary)
         {
             return wiki.Save(Title,
@@ -197,12 +183,10 @@ namespace Claymore.SharpMediaWiki
         }
 
         public void Protect(Wiki wiki,
-                            ProtectionFlags edit,
-                            ProtectionFlags move,
-                            string expiry,
+                            List<Wiki.Protection> protections,
                             string reason)
         {
-            wiki.Protect(Title, edit, move, expiry, reason, wiki.Token, false);
+            wiki.Protect(Title, protections, reason, wiki.Token, false);
         }
 
         public void UpProtect(Wiki wiki, string reason)
