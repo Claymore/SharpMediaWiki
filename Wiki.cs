@@ -220,7 +220,7 @@ namespace Claymore.SharpMediaWiki
             return result;
         }
 
-        private void Enumerate(ParameterCollection parameters, XmlDocument result)
+        private void Enumerate(ParameterCollection parameters, XmlDocument result, bool all)
         {
             string query = PrepareQuery(Action.Query, parameters);
             Parameter parameter = null;
@@ -235,8 +235,8 @@ namespace Claymore.SharpMediaWiki
                 {
                     throw new WikiException("Query failed.", e);
                 }
-                
-                if (parameter == null)
+
+                if (parameter == null || !all)
                 {
                     break;
                 }
@@ -252,20 +252,21 @@ namespace Claymore.SharpMediaWiki
             ParameterCollection parameters,
             string id)
         {
-            return Query(queryBy, parameters, new string[] { id }, _highLimits ? 500 : 50);
+            return Query(queryBy, parameters, new string[] { id }, _highLimits ? 500 : 50, true);
         }
 
         public XmlDocument Query(QueryBy queryBy,
             ParameterCollection parameters,
             IEnumerable<string> ids)
         {
-            return Query(queryBy, parameters, ids, _highLimits ? 500 : 50);
+            return Query(queryBy, parameters, ids, _highLimits ? 500 : 50, true);
         }
 
         public XmlDocument Query(QueryBy queryBy,
             ParameterCollection parameters,
             IEnumerable<string> ids,
-            int limit)
+            int limit,
+            bool all)
         {
             string keyword = "";
             switch (queryBy)
@@ -296,7 +297,7 @@ namespace Claymore.SharpMediaWiki
                     ParameterCollection localParameters = new ParameterCollection(parameters);
                     localParameters.Add(keyword, idsString.ToString());
                     string query = PrepareQuery(Action.Query, localParameters);
-                    Enumerate(localParameters, document);
+                    Enumerate(localParameters, document, all);
 
                     index = 1;
                     idsString = new StringBuilder("|" + id);
@@ -308,7 +309,7 @@ namespace Claymore.SharpMediaWiki
                 ParameterCollection localParameters = new ParameterCollection(parameters);
                 localParameters.Add(keyword, idsString.ToString());
                 string query = PrepareQuery(Action.Query, localParameters);
-                Enumerate(localParameters, document);
+                Enumerate(localParameters, document, all);
             }
             return document;
         }
