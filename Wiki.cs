@@ -358,6 +358,22 @@ namespace Claymore.SharpMediaWiki
                         Token);
         }
 
+        public string Append(string title, string text, string summary, MinorFlags minor, bool botEdit)
+        {
+            return Save(title,
+                        "",
+                        text,
+                        summary,
+                        minor,
+                        CreateFlags.None,
+                        WatchFlags.None,
+                        SaveFlags.Append,
+                        botEdit,
+                        "",
+                        "",
+                        Token);
+        }
+
         public string Prepend(string title, string text, string summary)
         {
             return Save(title,
@@ -405,6 +421,22 @@ namespace Claymore.SharpMediaWiki
                         WatchFlags.None,
                         SaveFlags.Replace,
                         true,
+                        "",
+                        "",
+                        Token);
+        }
+
+        public string Save(string title, string text, string summary, MinorFlags minor, bool botEdit)
+        {
+            return Save(title,
+                        "",
+                        text,
+                        summary,
+                        minor,
+                        CreateFlags.None,
+                        WatchFlags.None,
+                        SaveFlags.Replace,
+                        botEdit,
                         "",
                         "",
                         Token);
