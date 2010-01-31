@@ -184,6 +184,7 @@ namespace Claymore.SharpMediaWiki
                 response.Close();
                 _username = "";
                 _cookies = null;
+                _token = "";
             }
             catch (WebException e)
             {
@@ -352,10 +353,7 @@ namespace Claymore.SharpMediaWiki
                         CreateFlags.NoCreate,
                         WatchFlags.None,
                         SaveFlags.Append,
-                        true,
-                        "",
-                        "",
-                        Token);
+                        true);
         }
 
         public string Append(string title, string text, string summary, MinorFlags minor, bool botEdit)
@@ -368,10 +366,7 @@ namespace Claymore.SharpMediaWiki
                         CreateFlags.None,
                         WatchFlags.None,
                         SaveFlags.Append,
-                        botEdit,
-                        "",
-                        "",
-                        Token);
+                        botEdit);
         }
 
         public string Prepend(string title, string text, string summary)
@@ -384,10 +379,7 @@ namespace Claymore.SharpMediaWiki
                         CreateFlags.NoCreate,
                         WatchFlags.None,
                         SaveFlags.Prepend,
-                        true,
-                        "",
-                        "",
-                        Token);
+                        true);
         }
         
         public string Create(string title, string text, string summary)
@@ -400,10 +392,7 @@ namespace Claymore.SharpMediaWiki
                         CreateFlags.CreateOnly,
                         WatchFlags.None,
                         SaveFlags.Replace,
-                        true,
-                        "",
-                        "",
-                        Token);
+                        true);
         }
 
         public string SaveSection(string title, string section, string text, string summary)
@@ -420,10 +409,7 @@ namespace Claymore.SharpMediaWiki
                         CreateFlags.None,
                         WatchFlags.None,
                         SaveFlags.Replace,
-                        true,
-                        "",
-                        "",
-                        Token);
+                        true);
         }
 
         public string Save(string title, string text, string summary, MinorFlags minor, bool botEdit)
@@ -436,10 +422,7 @@ namespace Claymore.SharpMediaWiki
                         CreateFlags.None,
                         WatchFlags.None,
                         SaveFlags.Replace,
-                        botEdit,
-                        "",
-                        "",
-                        Token);
+                        botEdit);
         }
 
         public string Save(string title, string text, string summary)
@@ -452,10 +435,39 @@ namespace Claymore.SharpMediaWiki
                         CreateFlags.None,
                         WatchFlags.None,
                         SaveFlags.Replace,
-                        true,
+                        true);
+        }
+
+        public string Save(string title,
+                           string section,
+                           string text,
+                           string summary,
+                           MinorFlags minor,
+                           CreateFlags create,
+                           WatchFlags watch,
+                           SaveFlags mode,
+                           bool bot)
+        {
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "prop", "info" },
+                { "intoken", "edit" }
+            };
+            XmlDocument doc = Query(QueryBy.Titles, parameters, title);
+            XmlNode pageNode = doc.SelectSingleNode("//page");
+            string token = pageNode != null ? pageNode.Attributes["edittoken"].Value : "";
+            return Save(title,
+                        section,
+                        text,
+                        summary,
+                        minor,
+                        create,
+                        watch,
+                        mode,
+                        bot,
                         "",
                         "",
-                        Token);
+                        token);
         }
 
         public string Save(string title,
