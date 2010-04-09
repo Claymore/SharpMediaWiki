@@ -13,7 +13,7 @@ namespace Claymore.SharpMediaWiki
 {
     public class Wiki
     {
-        private CookieCollection _cookies;
+        private CookieContainer _cookies;
         private readonly Uri _uri;
         private string _userAgent;
         private string _token;
@@ -99,10 +99,7 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new ArgumentException("Password shoudln't be empty.", "password");
             }
-            if (_cookies != null && _cookies.Count > 0 && username == _username)
-            {
-                return;
-            }
+            
             ParameterCollection parameters = new ParameterCollection
             {
                 { "lgname", username },
@@ -113,6 +110,19 @@ namespace Claymore.SharpMediaWiki
             {
                 XmlDocument xml = MakeRequest(Action.Login, parameters);
                 string result = xml.SelectSingleNode("//login").Attributes["result"].Value;
+                if (result == "NeedToken")
+                {
+                    string loginToken = xml.SelectSingleNode("//login").Attributes["token"].Value;
+                    
+                    parameters = new ParameterCollection
+                    {
+                        { "lgname", username },
+                        { "lgpassword", password },
+                        { "lgtoken", loginToken }
+                    };
+                    xml = MakeRequest(Action.Login, parameters);
+                    result = xml.SelectSingleNode("//login").Attributes["result"].Value;
+                }
                 if (result != "Success")
                 {
                     throw new WikiException("Login failed, server returned '" + result + "'.");
@@ -381,7 +391,7 @@ namespace Claymore.SharpMediaWiki
                         SaveFlags.Prepend,
                         true);
         }
-        
+
         public string Create(string title, string text, string summary)
         {
             return Save(title,
@@ -511,7 +521,7 @@ namespace Claymore.SharpMediaWiki
             }
             if (watch != WatchFlags.None)
             {
-                parameters.Add(watch.ToString().ToLower());
+                parameters.Add("watchlist", watch.ToString().ToLower());
             }
             if (mode == SaveFlags.Append)
             {
@@ -829,19 +839,19 @@ namespace Claymore.SharpMediaWiki
         {
             Serializer serializer = new Serializer();
             serializer.Put(_cookies.Count);
-            for (int i = 0; i < _cookies.Count; ++i)
+            foreach (Cookie cookie in _cookies.GetCookies(_uri))
             {
-                serializer.Put(_cookies[i].Name);
-                serializer.Put(_cookies[i].Value);
-                serializer.Put(_cookies[i].Path);
-                serializer.Put(_cookies[i].Domain);
+                serializer.Put(cookie.Name);
+                serializer.Put(cookie.Value);
+                serializer.Put(cookie.Path);
+                serializer.Put(cookie.Domain);
             }
             return serializer.ToArray();
         }
 
         public void LoadCookies(byte[] data)
         {
-            _cookies = new CookieCollection();
+            _cookies = new CookieContainer();
             Deserializer deserializer = new Deserializer(data);
             int count = deserializer.GetInt();
             for (int i = 0; i < count; ++i)
@@ -937,10 +947,11 @@ namespace Claymore.SharpMediaWiki
                 throw MakeActionException(action, code);
             }
             node = doc.SelectSingleNode("//" + action.ToString().ToLower());
+            string result = "";
             if (node != null && node.Attributes["result"] != null)
             {
-                string result = node.Attributes["result"].Value;
-                if (result != "Success")
+                result = node.Attributes["result"].Value;
+                if (result != "Success" && result != "NeedToken")
                 {
                     throw MakeActionException(action, result);
                 }
@@ -950,7 +961,8 @@ namespace Claymore.SharpMediaWiki
                 response.Cookies != null &&
                 response.Cookies.Count > 0)
             {
-                _cookies = response.Cookies;
+                _cookies = new CookieContainer();
+                _cookies.Add(response.Cookies);
             }
             return doc;
         }
@@ -1106,12 +1118,13 @@ namespace Claymore.SharpMediaWiki
             {
                 request.Headers.Add(HttpRequestHeader.AcceptEncoding, "gzip,deflate");
             }
-            request.ProtocolVersion = HttpVersion.Version10;
+            request.ServicePoint.Expect100Continue = false;
+            request.Expect = "";
             request.UserAgent = _userAgent;
             request.CookieContainer = new CookieContainer();
             if (_cookies != null && _cookies.Count > 0)
             {
-                request.CookieContainer.Add(_cookies);
+                request.CookieContainer = _cookies;
             }
             return request;
         }
@@ -1266,7 +1279,8 @@ namespace Claymore.SharpMediaWiki
     {
         None,
         Watch,
-        Unwatch
+        Unwatch,
+        NoChange
     }
 
     public enum QueryBy
