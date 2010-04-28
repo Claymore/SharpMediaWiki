@@ -213,22 +213,168 @@ namespace Claymore.SharpMediaWiki
             StringBuilder sectionText = new StringBuilder();
             int level = 0;
             string sectionTitle = "";
-            string rawSectionTitle = "";
-            bool comment = false;
+            string rawSectionTitle = "";   
             bool found = false;
+            Tokens token = Tokens.WikiText;
             string line;
             while ((line = reader.ReadLine()) != null)
             {
+                for (int i = 0; i < line.Length - 1; ++i)
+                {
+                    char ch = line[i];
+                    char nextCh = line[i + 1];
+                    switch (token)
+                    {
+                        case Tokens.WikiText:
+                            if (ch == '<' && nextCh == '!')
+                            {
+                                token = Tokens.HtmlCommentStart;
+                                ++i;
+                            }
+                            else if (ch == '<' && nextCh == 'n')
+                            {
+                                token = Tokens.NoWikiStartPart1;
+                                ++i;
+                            }
+                            break;
+                        case Tokens.HtmlCommentStart:
+                            if (ch == '-' && nextCh == '-')
+                            {
+                                token = Tokens.HtmlComment;
+                                ++i;
+                            }
+                            else
+                            {
+                                token = Tokens.WikiText;
+                            }
+                            break;
+                        case Tokens.HtmlComment:
+                            if (ch == '-' && nextCh == '-')
+                            {
+                                token = Tokens.HtmlCommentEnd;
+                            }
+                            break;
+                        case Tokens.HtmlCommentEnd:
+                            if (ch == '-' && nextCh == '>')
+                            {
+                                token = Tokens.WikiText;
+                            }
+                            else
+                            {
+                                token = Tokens.HtmlComment;
+                            }
+                            break;
+                        case Tokens.NoWikiStartPart1:
+                            if (ch == 'o' && nextCh == 'w')
+                            {
+                                token = Tokens.NoWikiStartPart2;
+                                ++i;
+                            }
+                            else
+                            {
+                                token = Tokens.WikiText;
+                            }
+                            break;
+                        case Tokens.NoWikiStartPart2:
+                            if (ch == 'i' && nextCh == 'k')
+                            {
+                                token = Tokens.NoWikiStartPart3;
+                                ++i;
+                            }
+                            else
+                            {
+                                token = Tokens.WikiText;
+                            }
+                            break;
+                        case Tokens.NoWikiStartPart3:
+                            if (ch == 'i' && nextCh == '>')
+                            {
+                                token = Tokens.NoWiki;
+                                ++i;
+                            }
+                            else
+                            {
+                                token = Tokens.WikiText;
+                            }
+                            break;
+                        case Tokens.NoWiki:
+                            if (ch == '<' && nextCh == '/')
+                            {
+                                token = Tokens.NoWikiEndPart1;
+                                ++i;
+                            }
+                            break;
+                        case Tokens.NoWikiEndPart1:
+                            if (ch == 'n' && nextCh == 'o')
+                            {
+                                token = Tokens.NoWikiEndPart2;
+                                ++i;
+                            }
+                            else
+                            {
+                                token = Tokens.NoWiki;
+                            }
+                            break;
+                        case Tokens.NoWikiEndPart2:
+                            if (ch == 'w' && nextCh == 'i')
+                            {
+                                token = Tokens.NoWikiEndPart3;
+                                ++i;
+                            }
+                            else
+                            {
+                                token = Tokens.NoWiki;
+                            }
+                            break;
+                        case Tokens.NoWikiEndPart3:
+                            if (ch == 'k' && nextCh == 'i')
+                            {
+                                token = Tokens.NoWikiEndPart4;
+                            }
+                            else
+                            {
+                                token = Tokens.NoWiki;
+                            }
+                            break;
+                        case Tokens.NoWikiEndPart4:
+                            if (ch == 'i' && nextCh == '>')
+                            {
+                                token = Tokens.WikiText;
+                            }
+                            else
+                            {
+                                token = Tokens.NoWiki;
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                if (token == Tokens.HtmlCommentStart)
+                {
+                    token = Tokens.WikiText;
+                }
+                else if (token == Tokens.HtmlCommentEnd)
+                {
+                    token = Tokens.HtmlComment;
+                }
+                else if (token == Tokens.NoWikiStartPart1 ||
+                         token == Tokens.NoWikiStartPart2 ||
+                         token == Tokens.NoWikiStartPart3)
+                {
+                    token = Tokens.WikiText;
+                }
+                else if (token == Tokens.NoWikiEndPart1 ||
+                         token == Tokens.NoWikiEndPart2 ||
+                         token == Tokens.NoWikiEndPart3 ||
+                         token == Tokens.NoWikiEndPart4)
+                {
+                    token = Tokens.NoWiki;
+                }
+
                 Match m = _sectionRE.Match(line);
-                if (line.Contains("<!--"))
-                {
-                    comment = true;
-                }
-                if (comment && line.Contains("-->"))
-                {
-                    comment = false;
-                }
-                if (!comment && m.Success)
+
+                if (token == Tokens.WikiText && m.Success)
                 {
                     if (found)
                     {
@@ -297,6 +443,22 @@ namespace Claymore.SharpMediaWiki
             WikiPage page = new WikiPage(title);
             page.Parse(text);
             return page;
+        }
+
+        private enum Tokens
+        {
+            WikiText,
+            HtmlCommentStart, // <!
+            HtmlComment,
+            NoWikiStartPart1, // <n
+            NoWikiStartPart2, // ow
+            NoWikiStartPart3, // ik
+            NoWiki,
+            HtmlCommentEnd,   // --
+            NoWikiEndPart1,   // </
+            NoWikiEndPart2,   // no
+            NoWikiEndPart3,   // wi
+            NoWikiEndPart4    // ki
         }
     }
 }
