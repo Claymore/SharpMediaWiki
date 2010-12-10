@@ -259,6 +259,10 @@ namespace Claymore.SharpMediaWiki
                             {
                                 token = Tokens.WikiText;
                             }
+                            else if (ch == '-' && nextCh == '-')
+                            {
+                                break;
+                            }
                             else
                             {
                                 token = Tokens.HtmlComment;
