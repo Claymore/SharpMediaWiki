@@ -585,7 +585,8 @@ namespace Claymore.SharpMediaWiki
             {
                 { "revid", revisionId} ,
                 { "token", token },
-                { "flag_accuracy", accuracy }
+                { "flag_accuracy", accuracy },
+                //{ "unapprove", "1" }
             };
             if (!string.IsNullOrEmpty(comment))
             {
@@ -746,6 +747,80 @@ namespace Claymore.SharpMediaWiki
             catch (WebException e)
             {
                 throw new WikiException("Protect failed", e);
+            }
+        }
+
+        public void Upload(string filename, string comment, string text, string token, WatchFlags watch, string url)
+        {
+            if (string.IsNullOrEmpty(filename))
+            {
+                throw new ArgumentException("File name shouldn't be empty.", "filename");
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token shouldn't be empty.", "token");
+            }
+            if (string.IsNullOrEmpty(url))
+            {
+                throw new ArgumentException("URL shouldn't be empty.", "url");
+            }
+        }
+        
+        public void Upload(string filename, string comment, string text, WatchFlags watch, byte[] data, string contentType, bool ignoreWarnings)
+        {
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "prop", "info" },
+                { "intoken", "edit" }
+            };
+            XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
+            XmlNode pageNode = doc.SelectSingleNode("//page");
+            string token = pageNode != null ? pageNode.Attributes["edittoken"].Value : "";
+            Upload(filename, comment, text, token, watch, data, contentType, ignoreWarnings);
+        }
+
+        public void Upload(string filename, string comment, string text, string token, WatchFlags watch, byte[] data, string contentType, bool ignoreWarnings)
+        {
+            if (string.IsNullOrEmpty(filename))
+            {
+                throw new ArgumentException("File name shouldn't be empty.", "filename");
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token shouldn't be empty.", "token");
+            }
+            if (data == null || data.Length == 0)
+            {
+                throw new ArgumentException("Data shouldn't be empty.", "data");
+            }
+            ParameterCollection parameters = new ParameterCollection
+            {
+                { "filename", filename },
+                { "token", token },
+            };
+            if (!string.IsNullOrEmpty(text))
+            {
+                parameters.Add("text", text);
+            }
+            if (!string.IsNullOrEmpty(comment))
+            {
+                parameters.Add("comment", comment);
+            }
+            if (watch != WatchFlags.None)
+            {
+                parameters.Add("watch", watch.ToString().ToLower());
+            }
+            if (ignoreWarnings)
+            {
+                parameters.Add("ignorewarnings");
+            }
+            try
+            {
+                MakeMultipartFormRequest(parameters, filename, contentType, data);
+            }
+            catch (WebException e)
+            {
+                throw new WikiException("Upload failed", e);
             }
         }
 
@@ -967,10 +1042,78 @@ namespace Claymore.SharpMediaWiki
             return doc;
         }
 
+        private XmlDocument MakeMultipartFormRequest(ParameterCollection parameters, string filename, string contentType, byte[] data)
+        {
+            Action action = Action.Upload;
+            TimeSpan diff = DateTime.Now - _lastQueryTime;
+            if (diff.TotalMilliseconds < _sleepBetweenEdits)
+            {
+                Thread.Sleep(_sleepBetweenEdits - diff.Milliseconds);
+            }
+
+            XmlDocument doc = new XmlDocument();
+            HttpWebResponse response = null;
+            byte[] query = PrepareMultipartFormQuery(parameters, filename, contentType, data);
+            for (int tries = 0; tries < 3; ++tries)
+            {
+                string ct = "multipart/form-data; boundary=----------ThIs_Is_tHe_bouNdaRY_$";
+                UriBuilder ub = new UriBuilder(_uri);
+                ub.Path += "api.php";
+                HttpWebRequest request = PrepareRequest(ub.Uri, RequestMethod.Post, ct);
+                using (BinaryWriter sw =
+                    new BinaryWriter(request.GetRequestStream()))
+                {
+                    sw.Write(query);
+                }
+                response = (HttpWebResponse)request.GetResponse();
+                string[] retryAfter = response.Headers.GetValues("Retry-After");
+                if (retryAfter != null)
+                {
+                    int lagInSeconds = int.Parse(retryAfter[0]);
+                    Thread.Sleep(lagInSeconds * 1000);
+                }
+                else
+                {
+                    using (StreamReader sr =
+                        new StreamReader(GetResponseStream((HttpWebResponse)response)))
+                    {
+                        doc.LoadXml(sr.ReadToEnd());
+                        _lastQueryTime = DateTime.Now;
+                        XmlNode errorNode = doc.SelectSingleNode("//error");
+                        if (errorNode != null &&
+                            errorNode.Attributes["code"].Value == "maxlag")
+                        {
+                            Thread.Sleep(5 * 1000 * (tries + 1));
+                            continue;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            XmlNode node = doc.SelectSingleNode("//error");
+            if (node != null)
+            {
+                string code = node.Attributes["code"].Value;
+                throw MakeActionException(action, code);
+            }
+            node = doc.SelectSingleNode("//" + action.ToString().ToLower());
+            string result = "";
+            if (node != null && node.Attributes["result"] != null)
+            {
+                result = node.Attributes["result"].Value;
+                if (result != "Success" && result != "NeedToken")
+                {
+                    throw MakeActionException(action, result);
+                }
+            }
+            return doc;
+        }
+
         private Parameter FillDocumentWithQueryResults(string query, XmlDocument document)
         {
             TimeSpan diff = DateTime.Now - _lastQueryTime;
-            if (diff.Milliseconds < _sleepBetweenQueries)
+            if (diff.TotalMilliseconds < _sleepBetweenQueries)
             {
                 Thread.Sleep(_sleepBetweenQueries - diff.Milliseconds);
             }
@@ -1056,7 +1199,7 @@ namespace Claymore.SharpMediaWiki
             return null;
         }
 
-        private string PrepareQuery(Action action, ParameterCollection parameters)
+        public string PrepareQuery(Action action, ParameterCollection parameters)
         {
             string query = "";
             switch (action)
@@ -1074,6 +1217,41 @@ namespace Claymore.SharpMediaWiki
             }
             query += attributes.ToString();
             return query;
+        }
+
+        private byte[] PrepareMultipartFormQuery(ParameterCollection parameters, string filename, string contentType, byte[] data)
+        {
+            string boundary = "----------ThIs_Is_tHe_bouNdaRY_$";
+            List<string> lines = new List<string>();
+            lines.Add("--" + boundary);
+            lines.Add("Content-Disposition: form-data; name=\"action\"");
+            lines.Add("");
+            lines.Add("upload");
+
+            foreach (KeyValuePair<string, string> pair in parameters)
+            {
+                lines.Add("--" + boundary);
+                lines.Add(string.Format("Content-Disposition: form-data; name=\"{0}\"", pair.Key));
+                lines.Add("");
+                lines.Add(pair.Value);
+            }
+
+            lines.Add("--" + boundary);
+            lines.Add(string.Format("Content-Disposition: form-data; name=\"file\"; filename=\"{0}\"", filename));
+            lines.Add(string.Format("Content-Type: {0}", contentType));
+            lines.Add("");         
+
+            string header = string.Join("\r\n", lines.ToArray()) + "\r\n";
+            List<byte> bytes = new List<byte>();
+            bytes.AddRange(Encoding.UTF8.GetBytes(header));
+            bytes.AddRange(data);
+
+            lines.Clear();
+            lines.Add("--" + boundary + "--");
+            lines.Add("");
+            string footer = "\r\n" + string.Join("\r\n", lines.ToArray());
+            bytes.AddRange(Encoding.UTF8.GetBytes(footer));
+            return bytes.ToArray();
         }
 
         private static Stream GetResponseStream(HttpWebResponse response)
@@ -1102,12 +1280,17 @@ namespace Claymore.SharpMediaWiki
 
         private HttpWebRequest PrepareRequest(Uri uri, RequestMethod method)
         {
+            return PrepareRequest(uri, method, "application/x-www-form-urlencoded");
+        }
+
+        private HttpWebRequest PrepareRequest(Uri uri, RequestMethod method, string contentType)
+        {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
             request.AllowAutoRedirect = false;
             request.Method = method.ToString().ToUpper();
             if (method == RequestMethod.Post)
             {
-                request.ContentType = "application/x-www-form-urlencoded";
+                request.ContentType = contentType;
             }
             if (!_isRunningOnMono)
             {
