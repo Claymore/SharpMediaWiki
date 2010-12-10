@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 
 namespace Claymore.SharpMediaWiki
 {
@@ -129,6 +130,12 @@ namespace Claymore.SharpMediaWiki
                 byte[] data = wiki.NamespacesToArray();
                 gs.Write(data, 0, data.Length);
             }
+        }
+
+        public static string EscapePath(string path)
+        {
+            Regex charsRE = new Regex(@"[:/\*\?<>\|\n]");
+            return charsRE.Replace(path, "_").Replace('"', '_').Replace('\\', '_');
         }
     }
 }
