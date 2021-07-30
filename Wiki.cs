@@ -99,7 +99,7 @@ namespace Claymore.SharpMediaWiki
             {
                 throw new ArgumentException("Password shoudln't be empty.", "password");
             }
-            
+
             ParameterCollection parameters = new ParameterCollection
             {
                 { "lgname", username },
@@ -113,7 +113,7 @@ namespace Claymore.SharpMediaWiki
                 if (result == "NeedToken")
                 {
                     string loginToken = xml.SelectSingleNode("//login").Attributes["token"].Value;
-                    
+
                     parameters = new ParameterCollection
                     {
                         { "lgname", username },
@@ -131,17 +131,16 @@ namespace Claymore.SharpMediaWiki
 
                 parameters = new ParameterCollection
                 {
-                    { "prop", "info" },
-                    { "meta", "userinfo" },
+                    { "meta", "userinfo|tokens" },
                     { "uiprop", "rights" },
-                    { "intoken", "edit" }
+                    { "type", "csrf" }
                 };
 
                 XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
                 _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
                 _isBot = doc.SelectSingleNode("//rights[r=\"bot\"]/r") != null;
-                XmlNode pageNode = doc.SelectSingleNode("//page");
-                _token = pageNode != null ? pageNode.Attributes["edittoken"].Value : "";
+                XmlNode tokenNode = doc.SelectSingleNode("//tokens");
+                _token = tokenNode != null ? pageNode.Attributes["csrftoken"].Value : "";
             }
             catch (WebException e)
             {
@@ -156,18 +155,18 @@ namespace Claymore.SharpMediaWiki
                 ParameterCollection parameters = new ParameterCollection
                 {
                     { "prop", "info" },
-                    { "meta", "userinfo" },
+                    { "meta", "userinfo|tokens" },
                     { "uiprop", "rights" },
-                    { "intoken", "edit" }
+                    { "type", "csrf" }
                 };
 
                 XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
                 _highLimits = doc.SelectSingleNode("//rights[r=\"apihighlimits\"]/r") != null;
                 _isBot = doc.SelectSingleNode("//rights[r=\"bot\"]/r") != null;
-                XmlNode pageNode = doc.SelectSingleNode("//page");
+                XmlNode tokenNode = doc.SelectSingleNode("//tokens");
                 XmlNode userNode = doc.SelectSingleNode("//userinfo");
                 _username = userNode != null ? userNode.Attributes["name"].Value : "";
-                _token = pageNode != null ? pageNode.Attributes["edittoken"].Value : "";
+                _token = tokenNode != null ? pageNode.Attributes["csrftoken"].Value : "";
             }
             catch (WebException e)
             {
@@ -460,12 +459,12 @@ namespace Claymore.SharpMediaWiki
         {
             ParameterCollection parameters = new ParameterCollection
             {
-                { "prop", "info" },
-                { "intoken", "edit" }
+                { "meta", "tokens" },
+                { "type", "csrf" }
             };
             XmlDocument doc = Query(QueryBy.Titles, parameters, title);
-            XmlNode pageNode = doc.SelectSingleNode("//page");
-            string token = pageNode != null ? pageNode.Attributes["edittoken"].Value : "";
+            XmlNode tokenNode = doc.SelectSingleNode("//tokens");
+            string token = tokenNode != null ? pageNode.Attributes["csrftoken"].Value : "";
             return Save(title,
                         section,
                         text,
@@ -765,17 +764,18 @@ namespace Claymore.SharpMediaWiki
                 throw new ArgumentException("URL shouldn't be empty.", "url");
             }
         }
-        
+
         public void Upload(string filename, string comment, string text, WatchFlags watch, byte[] data, string contentType, bool ignoreWarnings)
         {
             ParameterCollection parameters = new ParameterCollection
             {
                 { "prop", "info" },
-                { "intoken", "edit" }
+                { "meta", "tokens" },
+                { "type": "csrf" }
             };
             XmlDocument doc = Query(QueryBy.Titles, parameters, "Main Page");
-            XmlNode pageNode = doc.SelectSingleNode("//page");
-            string token = pageNode != null ? pageNode.Attributes["edittoken"].Value : "";
+            XmlNode tokenNode = doc.SelectSingleNode("//tokens");
+            string token = tokenNode != null ? pageNode.Attributes["csrftoken"].Value : "";
             Upload(filename, comment, text, token, watch, data, contentType, ignoreWarnings);
         }
 
