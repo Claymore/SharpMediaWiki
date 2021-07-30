@@ -69,8 +69,9 @@ namespace Claymore.SharpMediaWiki
         {
             ParameterCollection parameters = new ParameterCollection
             {
-                { "prop", "info|revisions" },
-                { "intoken", "edit" },
+                { "prop", "revisions" },
+                { "meta", "tokens" },
+                { "type", "csrf" },
                 { "rvprop", "timestamp|content|ids" },
             };
             XmlDocument xml = wiki.Query(QueryBy.Titles, parameters, Title);
@@ -90,11 +91,11 @@ namespace Claymore.SharpMediaWiki
             {
                 revid = node.Attributes["id"].Value;
             }
-            node = xml.SelectSingleNode("//page");
-            string editToken = node.Attributes["edittoken"].Value;
+            node = xml.SelectSingleNode("//tokens");
+            string csrfToken = node.Attributes["csrftoken"].Value;
 
             BaseTimestamp = baseTimeStamp;
-            Token = editToken;
+            Token = csrfToken;
             LastRevisionId = revid;
             Parse(text);
         }
